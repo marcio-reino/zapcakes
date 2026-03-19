@@ -1,0 +1,260 @@
+import { useState, useCallback, useRef, useEffect } from 'react'
+import Cropper from 'react-easy-crop'
+import { FiUpload, FiX, FiCheck, FiZoomIn, FiZoomOut, FiRotateCw, FiClipboard } from 'react-icons/fi'
+
+function createImage(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.addEventListener('load', () => resolve(img))
+    img.addEventListener('error', reject)
+    img.setAttribute('crossOrigin', 'anonymous')
+    img.src = url
+  })
+}
+
+async function getCroppedImg(imageSrc, pixelCrop, rotation = 0) {
+  const image = await createImage(imageSrc)
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')
+
+  const size = 600
+  canvas.width = size
+  canvas.height = size
+
+  ctx.translate(size / 2, size / 2)
+  ctx.rotate((rotation * Math.PI) / 180)
+  ctx.translate(-size / 2, -size / 2)
+
+  const scaleX = size / pixelCrop.width
+  const scaleY = size / pixelCrop.height
+
+  ctx.drawImage(
+    image,
+    pixelCrop.x,
+    pixelCrop.y,
+    pixelCrop.width,
+    pixelCrop.height,
+    0,
+    0,
+    size,
+    size
+  )
+
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), 'image/webp', 0.9)
+  })
+}
+
+export default function ImageUpload({ value, onChange }) {
+  const [imageSrc, setImageSrc] = useState(null)
+  const [crop, setCrop] = useState({ x: 0, y: 0 })
+  const [zoom, setZoom] = useState(1)
+  const [rotation, setRotation] = useState(0)
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState(null)
+  const [showCropper, setShowCropper] = useState(false)
+  const fileInputRef = useRef(null)
+
+  const containerRef = useRef(null)
+
+  const onCropComplete = useCallback((_, croppedPixels) => {
+    setCroppedAreaPixels(croppedPixels)
+  }, [])
+
+  function loadImageFile(file) {
+    if (!file) return
+
+    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+    if (!allowed.includes(file.type)) {
+      alert('Tipo não permitido. Use JPEG, PNG, WebP ou GIF.')
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = () => {
+      setImageSrc(reader.result)
+      setCrop({ x: 0, y: 0 })
+      setZoom(1)
+      setRotation(0)
+      setShowCropper(true)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  function handleFileSelect(e) {
+    loadImageFile(e.target.files?.[0])
+    e.target.value = ''
+  }
+
+  function handlePaste(e) {
+    const items = e.clipboardData?.items
+    if (!items) return
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault()
+        loadImageFile(item.getAsFile())
+        return
+      }
+    }
+  }
+
+  function handleDrop(e) {
+    e.preventDefault()
+    const file = e.dataTransfer?.files?.[0]
+    if (file && file.type.startsWith('image/')) {
+      loadImageFile(file)
+    }
+  }
+
+  function handleDragOver(e) {
+    e.preventDefault()
+  }
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    el.addEventListener('paste', handlePaste)
+    return () => el.removeEventListener('paste', handlePaste)
+  })
+
+  async function handleCropConfirm() {
+    if (!croppedAreaPixels || !imageSrc) return
+    const blob = await getCroppedImg(imageSrc, croppedAreaPixels, rotation)
+    onChange(blob)
+    setShowCropper(false)
+    setImageSrc(null)
+  }
+
+  function handleCropCancel() {
+    setShowCropper(false)
+    setImageSrc(null)
+  }
+
+  function handleRemove() {
+    onChange(null)
+  }
+
+  const previewUrl = value instanceof Blob ? URL.createObjectURL(value) : value
+
+  return (
+    <div ref={containerRef} tabIndex={-1} onDrop={handleDrop} onDragOver={handleDragOver} className="outline-none">
+      {/* Cropper Modal */}
+      {showCropper && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+          <div className="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3 border-b bg-gray-50 dark:bg-gray-700 dark:border-gray-600">
+              <h3 className="text-sm font-semibold text-gray-800 dark:text-white">Recortar Imagem (600x600)</h3>
+              <button onClick={handleCropCancel} className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg">
+                <FiX size={18} />
+              </button>
+            </div>
+
+            <div className="relative w-full" style={{ height: '360px' }}>
+              <Cropper
+                image={imageSrc}
+                crop={crop}
+                zoom={zoom}
+                rotation={rotation}
+                aspect={1}
+                onCropChange={setCrop}
+                onZoomChange={setZoom}
+                onCropComplete={onCropComplete}
+                cropShape="rect"
+                showGrid
+              />
+            </div>
+
+            <div className="px-5 py-3 space-y-3 border-t dark:border-gray-600">
+              <div className="flex items-center gap-3">
+                <FiZoomOut size={14} className="text-gray-400 shrink-0" />
+                <input
+                  type="range"
+                  min={1}
+                  max={3}
+                  step={0.05}
+                  value={zoom}
+                  onChange={(e) => setZoom(Number(e.target.value))}
+                  className="w-full h-1.5 bg-gray-200 dark:bg-gray-600 rounded-full appearance-none cursor-pointer accent-green-600"
+                />
+                <FiZoomIn size={14} className="text-gray-400 shrink-0" />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setRotation((r) => (r + 90) % 360)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
+                >
+                  <FiRotateCw size={13} /> Girar
+                </button>
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCropCancel}
+                    className="px-4 py-1.5 text-sm border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCropConfirm}
+                    className="px-4 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-1.5"
+                  >
+                    <FiCheck size={14} /> Aplicar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Preview ou Botão de Upload */}
+      {previewUrl ? (
+        <div className="relative group w-32 h-32">
+          <img
+            src={previewUrl}
+            alt="Preview"
+            className="w-32 h-32 object-cover rounded-xl border-2 border-gray-200 dark:border-gray-600"
+          />
+          <div className="absolute inset-0 bg-black/40 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="p-1.5 bg-white/90 rounded-lg text-gray-700 hover:bg-white"
+              title="Trocar imagem"
+            >
+              <FiUpload size={15} />
+            </button>
+            <button
+              type="button"
+              onClick={handleRemove}
+              className="p-1.5 bg-red-500/90 rounded-lg text-white hover:bg-red-600"
+              title="Remover"
+            >
+              <FiX size={15} />
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className="w-32 h-32 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl flex flex-col items-center justify-center gap-1.5 text-gray-400 hover:text-green-500 hover:border-green-500 dark:hover:border-green-500 transition-colors cursor-pointer focus:border-green-500 focus:text-green-500 focus:ring-2 focus:ring-green-500/30 outline-none"
+        >
+          <FiUpload size={20} />
+          <span className="text-[10px]">Upload ou Ctrl+V</span>
+        </button>
+      )}
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/gif"
+        onChange={handleFileSelect}
+        className="hidden"
+      />
+    </div>
+  )
+}

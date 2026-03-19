@@ -1,0 +1,32 @@
+{
+  "name": "zapcakes-backend",
+  "version": "1.0.0",
+  "description": "ZapCakes - Sistema gerenciador de chatbot para WhatsApp",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "nodemon src/server.js",
+    "start": "node src/server.js",
+    "prisma:generate": "npx prisma generate",
+    "prisma:migrate": "npx prisma migrate dev",
+    "prisma:studio": "npx prisma studio",
+    "seed": "node prisma/seed.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1012.0",
+    "@aws-sdk/s3-request-presigner": "^3.1012.0",
+    "@fastify/cors": "^10.0.0",
+    "@fastify/jwt": "^9.0.0",
+    "@fastify/multipart": "^9.0.0",
+    "@prisma/client": "^6.0.0",
+    "axios": "^1.7.0",
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.4.0",
+    "fastify": "^5.0.0",
+    "openai": "^6.32.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0",
+    "prisma": "^6.0.0"
+  }
+}

@@ -1,0 +1,323 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// Usuários do sistema (admin e clientes)
+model User {
+  id           Int      @id @default(autoincrement())
+  name         String
+  email        String   @unique
+  password     String
+  phone        String?
+  role         Role     @default(CLIENT)
+  active       Boolean  @default(true)
+  street       String?  @map("street")
+  number       String?  @map("number")
+  complement   String?  @map("complement")
+  neighborhood String?  @map("neighborhood")
+  city         String?  @map("city")
+  state        String?  @map("state")
+  zipCode      String?  @map("zip_code")
+  reference    String?  @map("reference") @db.VarChar(200)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  instances  Instance[]
+  orders     Order[]
+  categories Category[]
+  products   Product[]
+  combos            Combo[]
+  account           Account?
+  agentInstructions AgentInstruction[]
+
+  @@map("users")
+}
+
+enum Role {
+  ADMIN
+  CLIENT
+}
+
+// Planos de assinatura
+model Plan {
+  id          Int      @id @default(autoincrement())
+  title       String
+  description String?  @db.Text
+  price       Decimal  @db.Decimal(10, 2)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  accounts Account[]
+
+  @@map("plans")
+}
+
+// Conta do usuário (dados empresariais + plano)
+model Account {
+  id            Int           @id @default(autoincrement())
+  userId        Int           @unique @map("user_id")
+  planId        Int?          @map("plan_id")
+  companyName   String?       @map("company_name")
+  document      String?       @db.VarChar(18) // CPF (14) ou CNPJ (18) formatado
+  documentType  DocumentType? @map("document_type")
+  status        AccountStatus @default(ACTIVE)
+  trialEndsAt   DateTime?     @map("trial_ends_at")
+  planStartedAt DateTime?     @map("plan_started_at")
+  planExpiresAt DateTime?     @map("plan_expires_at")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan     Plan?     @relation(fields: [planId], references: [id])
+  payments Payment[]
+
+  @@map("accounts")
+}
+
+enum DocumentType {
+  CPF
+  CNPJ
+}
+
+enum AccountStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  TRIAL
+}
+
+// Histórico de pagamentos
+model Payment {
+  id            Int           @id @default(autoincrement())
+  accountId     Int           @map("account_id")
+  amount        Decimal       @db.Decimal(10, 2)
+  method        PaymentMethod?
+  status        PaymentStatus @default(PENDING)
+  referenceMonth String?      @map("reference_month") @db.VarChar(7) // "2026-03"
+  externalId    String?       @map("external_id")     // ID do gateway de pagamento
+  paidAt        DateTime?     @map("paid_at")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+}
+
+enum PaymentMethod {
+  PIX
+  CREDIT_CARD
+  BOLETO
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
+// Instâncias do WhatsApp (Evolution API)
+model Instance {
+  id             Int            @id @default(autoincrement())
+  userId         Int            @map("user_id")
+  instanceName   String         @unique @map("instance_name")
+  instanceId     String?        @map("instance_id")
+  status         InstanceStatus @default(DISCONNECTED)
+  phone          String?
+  profileName    String?        @map("profile_name")
+  profilePicUrl  String?        @map("profile_pic_url") @db.Text
+  webhookUrl     String?        @map("webhook_url") @db.Text
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chatbot  Chatbot?
+  messages Message[]
+
+  @@map("instances")
+}
+
+enum InstanceStatus {
+  CONNECTED
+  DISCONNECTED
+  CONNECTING
+}
+
+// Configuração do chatbot por instância
+model Chatbot {
+  id           Int      @id @default(autoincrement())
+  instanceId   Int      @unique @map("instance_id")
+  welcomeMsg   String?  @map("welcome_msg") @db.Text
+  menuMsg      String?  @map("menu_msg") @db.Text
+  closingMsg   String?  @map("closing_msg") @db.Text
+  active       Boolean  @default(true)
+  businessHoursStart String? @map("business_hours_start")
+  businessHoursEnd   String? @map("business_hours_end")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  instance Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  @@map("chatbots")
+}
+
+// Categorias de produtos
+model Category {
+  id        Int       @id @default(autoincrement())
+  userId    Int       @map("user_id")
+  name      String
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  products Product[]
+
+  @@map("categories")
+}
+
+// Produtos (bolos, doces, etc)
+model Product {
+  id          Int      @id @default(autoincrement())
+  userId      Int      @map("user_id")
+  categoryId  Int      @map("category_id")
+  name        String
+  description String?  @db.Text
+  price       Decimal  @db.Decimal(10, 2)
+  imageUrl    String?  @map("image_url") @db.Text
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category   Category    @relation(fields: [categoryId], references: [id])
+  orderItems OrderItem[]
+  comboItems ComboItem[]
+
+  @@map("products")
+}
+
+// Combos (conjunto de produtos com desconto)
+model Combo {
+  id          Int      @id @default(autoincrement())
+  userId      Int      @map("user_id")
+  name        String
+  description String?  @db.Text
+  discount    Decimal  @default(0) @db.Decimal(10, 2) // valor do desconto
+  imageUrl    String?  @map("image_url") @db.Text
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items ComboItem[]
+
+  @@map("combos")
+}
+
+// Itens do combo
+model ComboItem {
+  id        Int @id @default(autoincrement())
+  comboId   Int @map("combo_id")
+  productId Int @map("product_id")
+  quantity  Int @default(1)
+  sortOrder Int @default(0) @map("sort_order")
+
+  combo   Combo   @relation(fields: [comboId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@unique([comboId, productId])
+  @@map("combo_items")
+}
+
+// Pedidos
+model Order {
+  id              Int         @id @default(autoincrement())
+  userId          Int         @map("user_id")
+  customerName    String      @map("customer_name")
+  customerPhone   String      @map("customer_phone")
+  status          OrderStatus @default(PENDING)
+  total           Decimal     @db.Decimal(10, 2)
+  deliveryAddress String?     @map("delivery_address") @db.Text
+  notes           String?     @db.Text
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  user  User        @relation(fields: [userId], references: [id])
+  items OrderItem[]
+
+  @@map("orders")
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  READY
+  DELIVERED
+  CANCELLED
+}
+
+// Itens do pedido
+model OrderItem {
+  id        Int     @id @default(autoincrement())
+  orderId   Int     @map("order_id")
+  productId Int     @map("product_id")
+  quantity  Int
+  price     Decimal @db.Decimal(10, 2)
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("order_items")
+}
+
+// Instruções do agente de atendimento
+model AgentInstruction {
+  id        Int                      @id @default(autoincrement())
+  userId    Int                      @map("user_id")
+  category  AgentInstructionCategory
+  title     String
+  content   String                   @db.Text
+  imageUrl  String?                  @map("image_url") @db.Text
+  active    Boolean                  @default(true)
+  sortOrder Int                      @default(0) @map("sort_order")
+  createdAt DateTime                 @default(now()) @map("created_at")
+  updatedAt DateTime                 @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("agent_instructions")
+}
+
+enum AgentInstructionCategory {
+  GREETING
+  COMPANY
+  ORDERS
+  PRODUCTS
+  QUESTIONS
+  CLOSING
+}
+
+// Mensagens do WhatsApp (log)
+model Message {
+  id          Int      @id @default(autoincrement())
+  instanceId  Int      @map("instance_id")
+  remoteJid   String   @map("remote_jid")
+  fromMe      Boolean  @default(false) @map("from_me")
+  messageType String   @map("message_type")
+  content     String   @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  instance Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+}

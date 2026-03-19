@@ -1,0 +1,8 @@
+Email: admin@zapcakes.com
+Senha: admin123
+
+API keys OpenAi - ZapCakes
+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
+
+evolution api key
+429683C4C977415CAAFCCE10F7D57E11
