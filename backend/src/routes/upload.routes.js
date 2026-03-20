@@ -12,9 +12,13 @@ export async function uploadRoutes(app) {
       return reply.status(400).send({ error: 'Nenhum arquivo enviado' })
     }
 
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+    const allowedTypes = [
+      'image/jpeg', 'image/png', 'image/webp', 'image/gif',
+      'application/pdf',
+      'audio/mpeg', 'audio/mp3',
+    ]
     if (!allowedTypes.includes(file.mimetype)) {
-      return reply.status(400).send({ error: 'Tipo de arquivo não permitido. Use: JPEG, PNG, WebP ou GIF' })
+      return reply.status(400).send({ error: 'Tipo de arquivo não permitido. Use: JPEG, PNG, WebP, GIF, PDF ou MP3' })
     }
 
     const account = await prisma.account.findUnique({ where: { userId: request.user.id } })

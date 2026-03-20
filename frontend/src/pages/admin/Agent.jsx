@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import api from '../../services/api.js'
 import toast from 'react-hot-toast'
-import { FiPlus, FiEdit2, FiTrash2, FiMessageSquare, FiBriefcase, FiShoppingCart, FiPackage, FiHelpCircle, FiCheckCircle, FiImage, FiSmartphone, FiRefreshCw, FiWifi, FiWifiOff } from 'react-icons/fi'
+import { FiPlus, FiEdit2, FiTrash2, FiMessageSquare, FiBriefcase, FiShoppingCart, FiPackage, FiHelpCircle, FiCheckCircle, FiImage, FiSmartphone, FiRefreshCw, FiWifi, FiWifiOff, FiFile, FiMusic } from 'react-icons/fi'
 
 import Modal from '../../components/Modal.jsx'
 import ConfirmModal from '../../components/ConfirmModal.jsx'
-import ImageUpload from '../../components/ImageUpload.jsx'
+import MediaUpload from '../../components/MediaUpload.jsx'
 
 const CATEGORIES = [
   { value: 'GREETING', label: 'Saudação', icon: FiMessageSquare, color: 'bg-blue-500', lightBg: 'bg-gray-50 dark:bg-gray-800', border: 'border-gray-200 dark:border-gray-700' },
@@ -72,9 +72,17 @@ export default function AdminAgent() {
     setSaving(true)
     try {
       let imageUrl = form.image
-      if (form.image && form.image instanceof Blob) {
+      if (form.image && (form.image instanceof Blob || form.image instanceof File)) {
         const fd = new FormData()
-        fd.append('file', form.image, 'instruction.webp')
+        let fileName = 'instruction.webp'
+        if (form.image instanceof File && form.image.name) {
+          fileName = form.image.name
+        } else if (form.image.type === 'application/pdf') {
+          fileName = 'instruction.pdf'
+        } else if (form.image.type?.startsWith('audio/')) {
+          fileName = 'instruction.mp3'
+        }
+        fd.append('file', form.image, fileName)
         const { data: upload } = await api.post('/uploads?folder=agente', fd)
         imageUrl = upload.url
       }
@@ -227,17 +235,27 @@ export default function AdminAgent() {
                       key={instruction.id}
                       className={`flex items-start gap-4 px-5 py-3.5 ${idx > 0 ? 'border-t border-inherit' : ''} bg-white/60 dark:bg-gray-800/60`}
                     >
-                      {instruction.imageUrl && (
-                        <img src={instruction.imageUrl} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" />
-                      )}
+                      {instruction.imageUrl && (() => {
+                        const url = instruction.imageUrl.toLowerCase()
+                        if (url.match(/\.pdf(\?|$)/)) {
+                          return <div className="w-12 h-12 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 flex items-center justify-center shrink-0"><FiFile size={20} className="text-red-500" /></div>
+                        }
+                        if (url.match(/\.(mp3|mpeg)(\?|$)/)) {
+                          return <div className="w-12 h-12 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 flex items-center justify-center shrink-0"><FiMusic size={20} className="text-blue-500" /></div>
+                        }
+                        return <img src={instruction.imageUrl} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" />
+                      })()}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <h3 className={`font-medium ${instruction.active ? 'text-gray-800 dark:text-white' : 'text-gray-400 dark:text-gray-500 line-through'}`}>
                             {instruction.title}
                           </h3>
-                          {instruction.imageUrl && !instruction.imageUrl.startsWith('blob:') && (
-                            <FiImage size={14} className="text-gray-400" />
-                          )}
+                          {instruction.imageUrl && !instruction.imageUrl.startsWith('blob:') && (() => {
+                            const url = instruction.imageUrl.toLowerCase()
+                            if (url.match(/\.pdf(\?|$)/)) return <FiFile size={14} className="text-red-400" />
+                            if (url.match(/\.(mp3|mpeg)(\?|$)/)) return <FiMusic size={14} className="text-blue-400" />
+                            return <FiImage size={14} className="text-gray-400" />
+                          })()}
                           {!instruction.active && (
                             <span className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 px-2 py-0.5 rounded-full">Inativa</span>
                           )}
@@ -328,10 +346,10 @@ export default function AdminAgent() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Imagem anexa</label>
-            <ImageUpload
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Anexo (imagem, PDF ou áudio)</label>
+            <MediaUpload
               value={form.image}
-              onChange={(img) => setForm({ ...form, image: img })}
+              onChange={(file) => setForm({ ...form, image: file })}
             />
           </div>
 

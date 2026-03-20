@@ -229,6 +229,52 @@ export class OpenAiService {
     })
   }
 
+  // Envia anexo de instrução (imagem, PDF ou áudio) no WhatsApp
+  async sendAttachment(userId, instanceName, remoteJid, instructionId) {
+    const number = remoteJid.replace('@s.whatsapp.net', '')
+
+    const instruction = await prisma.agentInstruction.findFirst({
+      where: { id: Number(instructionId), userId, active: true },
+    })
+
+    if (!instruction || !instruction.imageUrl) return
+
+    const url = instruction.imageUrl.toLowerCase()
+    await this.sendTyping(instanceName, remoteJid)
+
+    try {
+      if (url.match(/\.pdf(\?|$)/)) {
+        await evolutionApi.post(`/message/sendMedia/${instanceName}`, {
+          number,
+          mediatype: 'document',
+          media: instruction.imageUrl,
+          caption: instruction.title,
+          fileName: `${instruction.title}.pdf`,
+        })
+      } else if (url.match(/\.(mp3|mpeg)(\?|$)/)) {
+        await evolutionApi.post(`/message/sendMedia/${instanceName}`, {
+          number,
+          mediatype: 'audio',
+          media: instruction.imageUrl,
+        })
+      } else {
+        // Imagem
+        await evolutionApi.post(`/message/sendMedia/${instanceName}`, {
+          number,
+          mediatype: 'image',
+          media: instruction.imageUrl,
+          caption: instruction.title,
+        })
+      }
+    } catch (err) {
+      console.error('Erro ao enviar anexo:', err.message)
+      await evolutionApi.post(`/message/sendText/${instanceName}`, {
+        number,
+        text: `[Não foi possível enviar o anexo: ${instruction.title}]`,
+      })
+    }
+  }
+
   // Executa uma tool call do OpenAI
   async executeToolCall(toolName, args, userId) {
     switch (toolName) {
@@ -372,6 +418,8 @@ export class OpenAiService {
 
     let prompt = 'Você é um agente de atendimento ao cliente via WhatsApp.\n\n'
 
+    const attachments = []
+
     if (instructions.length > 0) {
       let currentCategory = null
       for (const inst of instructions) {
@@ -379,8 +427,28 @@ export class OpenAiService {
           currentCategory = inst.category
           prompt += `## ${categoryLabels[inst.category] || inst.category}\n\n`
         }
-        prompt += `### ${inst.title}\n${inst.content}\n\n`
+        prompt += `### ${inst.title}\n${inst.content}\n`
+        if (inst.imageUrl) {
+          const url = inst.imageUrl.toLowerCase()
+          let tipo = 'imagem'
+          if (url.match(/\.pdf(\?|$)/)) tipo = 'PDF'
+          else if (url.match(/\.(mp3|mpeg)(\?|$)/)) tipo = 'áudio'
+          prompt += `📎 Anexo disponível (${tipo}): Para enviar este anexo ao cliente, responda com [ENVIAR_ANEXO:${inst.id}]\n`
+          attachments.push({ id: inst.id, url: inst.imageUrl, tipo, titulo: inst.title })
+        }
+        prompt += '\n'
       }
+    }
+
+    // Instruções sobre anexos
+    if (attachments.length > 0) {
+      prompt += `\n## ANEXOS DISPONÍVEIS\n\n`
+      prompt += `Você tem os seguintes anexos que podem ser enviados ao cliente quando relevante:\n\n`
+      attachments.forEach(a => {
+        prompt += `- ID ${a.id}: ${a.titulo} (${a.tipo}) → Use [ENVIAR_ANEXO:${a.id}] para enviar\n`
+      })
+      prompt += `\nQuando o conteúdo de uma instrução tiver um anexo, envie-o ao cliente junto com sua resposta usando o comando [ENVIAR_ANEXO:ID].\n`
+      prompt += `Você pode incluir texto antes do comando. O sistema enviará o arquivo automaticamente.\n\n`
     }
 
     // Adiciona catálogo de produtos do banco
@@ -572,11 +640,45 @@ export class OpenAiService {
     return 'Desculpe, ocorreu um erro ao processar sua solicitação. Por favor, tente novamente.'
   }
 
+  // Processa comandos especiais na resposta do GPT e retorna { reply, handled }
+  async processCommands(reply, userId, instanceName, remoteJid) {
+    if (!instanceName) return { reply, handled: false }
+
+    // Comando: mostrar produtos de uma categoria
+    const productMatch = reply.match(/\[MOSTRAR_PRODUTOS:(.+?)\]/)
+    if (productMatch) {
+      const categoryName = productMatch[1].trim()
+      await this.sendProductImages(userId, instanceName, remoteJid, categoryName)
+      return { reply: `[Imagens dos produtos de ${categoryName} enviadas ao cliente]`, handled: true }
+    }
+
+    // Comando: enviar anexo de instrução (pode ter texto junto)
+    const attachmentMatches = reply.matchAll(/\[ENVIAR_ANEXO:(\d+)\]/g)
+    let hasAttachment = false
+    let textReply = reply
+
+    for (const match of attachmentMatches) {
+      hasAttachment = true
+      const instructionId = match[1]
+      textReply = textReply.replace(match[0], '').trim()
+      await this.sendAttachment(userId, instanceName, remoteJid, instructionId)
+    }
+
+    if (hasAttachment) {
+      // Se tinha texto além do comando, retorna o texto para ser enviado normalmente
+      if (textReply) {
+        return { reply: textReply, handled: false }
+      }
+      return { reply: '[Anexo enviado ao cliente]', handled: true }
+    }
+
+    return { reply, handled: false }
+  }
+
   // Processa mensagem e retorna resposta da OpenAI
   async chat(userId, remoteJid, userMessage, instanceName = null) {
     const systemPrompt = await this.buildSystemPrompt(userId)
 
-    // Adiciona mensagem do usuário ao contexto
     this.addMessage(remoteJid, 'user', userMessage)
 
     const messages = [
@@ -586,23 +688,13 @@ export class OpenAiService {
 
     let reply = await this.processWithTools(messages, userId, remoteJid, instanceName)
 
-    // Verifica se a resposta contém o comando de mostrar produtos
-    const productMatch = reply.match(/\[MOSTRAR_PRODUTOS:(.+?)\]/)
-    if (productMatch && instanceName) {
-      const categoryName = productMatch[1].trim()
-      await this.sendProductImages(userId, instanceName, remoteJid, categoryName)
+    const { reply: processedReply, handled } = await this.processCommands(reply, userId, instanceName, remoteJid)
+    reply = processedReply
 
-      reply = `[Imagens dos produtos de ${categoryName} enviadas ao cliente]`
-      this.addMessage(remoteJid, 'assistant', reply)
-      this.clearExpired()
-      return null
-    }
-
-    // Adiciona resposta ao contexto
     this.addMessage(remoteJid, 'assistant', reply)
     this.clearExpired()
 
-    return reply
+    return handled ? null : reply
   }
 
   // Processa mensagem com imagem (multimodal)
@@ -624,19 +716,12 @@ export class OpenAiService {
 
     let reply = await this.processWithTools(messages, userId, remoteJid, instanceName)
 
-    const productMatch = reply.match(/\[MOSTRAR_PRODUTOS:(.+?)\]/)
-    if (productMatch && instanceName) {
-      const categoryName = productMatch[1].trim()
-      await this.sendProductImages(userId, instanceName, remoteJid, categoryName)
-      reply = `[Imagens dos produtos de ${categoryName} enviadas ao cliente]`
-      this.addMessage(remoteJid, 'assistant', reply)
-      this.clearExpired()
-      return null
-    }
+    const { reply: processedReply, handled } = await this.processCommands(reply, userId, instanceName, remoteJid)
+    reply = processedReply
 
     this.addMessage(remoteJid, 'assistant', reply)
     this.clearExpired()
 
-    return reply
+    return handled ? null : reply
   }
 }
