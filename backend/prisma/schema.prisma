@@ -277,9 +277,12 @@ model Order {
   status          OrderStatus @default(PENDING)
   total           Decimal     @db.Decimal(10, 2)
   reservation     Decimal?    @db.Decimal(10, 2)
+  deliveryFee     Decimal?    @map("delivery_fee") @db.Decimal(10, 2)
   deliveryType    String?     @map("delivery_type") @db.VarChar(20)
   deliveryAddress String?     @map("delivery_address") @db.Text
   paymentProof    String?     @map("payment_proof") @db.Text
+  proofVerified   Boolean     @default(false) @map("proof_verified")
+  paymentConfirmed Boolean    @default(false) @map("payment_confirmed")
   notes           String?     @db.Text
   createdAt       DateTime    @default(now()) @map("created_at")
   updatedAt       DateTime    @updatedAt @map("updated_at")

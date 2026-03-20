@@ -9,4 +9,7 @@ export async function orderRoutes(app) {
   app.post('/', controller.create)
   app.get('/:id', controller.getById)
   app.put('/:id/status', controller.updateStatus)
+  app.put('/:id/verify-proof', controller.verifyProof)
+  app.put('/:id/confirm-payment', controller.confirmPayment)
+  app.put('/:id/cancel', controller.cancelOrder)
 }

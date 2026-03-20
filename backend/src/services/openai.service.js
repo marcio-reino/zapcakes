@@ -98,6 +98,9 @@ const agentTools = [
           customerPhone: { type: 'string', description: 'Celular do cliente com DDD' },
           deliveryType: { type: 'string', enum: ['ENTREGA', 'RETIRADA'], description: 'Tipo: ENTREGA ou RETIRADA' },
           deliveryAddress: { type: 'string', description: 'Endereço de entrega ou da loja para retirada' },
+          deliveryFee: { type: 'number', description: 'Taxa de entrega em reais (0 se retirada ou sem taxa)' },
+          neighborhood: { type: 'string', description: 'Bairro do cliente (para cálculo de taxa de entrega)' },
+          city: { type: 'string', description: 'Cidade do cliente (para cálculo de taxa de entrega)' },
           notes: { type: 'string', description: 'Observações do pedido (sabores, decoração, data de entrega, etc)' },
           items: {
             type: 'array',
@@ -518,34 +521,55 @@ export class OpenAiService {
         const companyAddress = [user?.street, user?.number, user?.neighborhood, user?.city, user?.state]
           .filter(Boolean).join(', ')
 
-        if (hasDelivery && hasPickup) {
-          return JSON.stringify({
-            deliveryAvailable: true,
-            pickupAvailable: true,
-            companyAddress: companyAddress || 'Endereço não cadastrado',
-            message: 'Entrega e retirada no local disponíveis. Pergunte ao cliente qual prefere.',
-          })
-        } else if (hasDelivery) {
-          return JSON.stringify({
-            deliveryAvailable: true,
-            pickupAvailable: false,
-            companyAddress: companyAddress || 'Endereço não cadastrado',
-            message: 'Apenas entrega disponível. Peça o endereço do cliente.',
-          })
-        } else {
-          return JSON.stringify({
-            deliveryAvailable: false,
-            pickupAvailable: true,
-            companyAddress: companyAddress || 'Endereço não cadastrado',
-            message: `Apenas retirada no local. Informe o endereço: ${companyAddress || 'Endereço não cadastrado'}`,
-          })
+        // Extrai taxas de entrega das instruções
+        const deliveryFees = this._extractDeliveryFees(instructions)
+        const feesInfo = deliveryFees.length > 0
+          ? deliveryFees.map(f => `${f.location}: R$ ${f.value.toFixed(2)}`).join(', ')
+          : null
+
+        const result = {
+          deliveryAvailable: hasDelivery || hasPickup,
+          pickupAvailable: hasPickup || !hasDelivery,
+          companyAddress: companyAddress || 'Endereço não cadastrado',
         }
+
+        if (deliveryFees.length > 0) {
+          result.deliveryFees = feesInfo
+          result.message = `Taxas de entrega por localidade: ${feesInfo}. ` +
+            (hasPickup ? 'Retirada no local também disponível.' : '')
+        } else if (hasDelivery && hasPickup) {
+          result.message = 'Entrega e retirada no local disponíveis. Pergunte ao cliente qual prefere.'
+        } else if (hasDelivery) {
+          result.message = 'Apenas entrega disponível. Peça o endereço do cliente.'
+        } else {
+          result.message = `Apenas retirada no local. Informe o endereço: ${companyAddress || 'Endereço não cadastrado'}`
+        }
+
+        return JSON.stringify(result)
       }
 
       case 'criar_pedido': {
         try {
-          const total = args.items.reduce((sum, item) => sum + item.quantity * item.price, 0)
-          const reservation = Math.round(total * 0.3 * 100) / 100
+          const itemsTotal = args.items.reduce((sum, item) => sum + item.quantity * item.price, 0)
+
+          // Busca instruções de pedidos para reserva e taxa de entrega
+          const orderInstructions = await prisma.agentInstruction.findMany({
+            where: { userId, active: true, category: 'ORDERS' },
+          })
+
+          // Taxa de entrega
+          let deliveryFee = args.deliveryFee || 0
+          if (args.deliveryType === 'ENTREGA' && !deliveryFee) {
+            const fees = this._extractDeliveryFees(orderInstructions)
+            deliveryFee = this._findDeliveryFee(fees, args.neighborhood, args.city)
+          }
+
+          const total = itemsTotal + deliveryFee
+
+          // Reserva condicional - só se configurada nas instruções
+          const hasRes = this._hasReservation(orderInstructions)
+          const resPercent = hasRes ? (this._extractReservationPercent(orderInstructions) || 30) : null
+          const reservation = resPercent ? Math.round(itemsTotal * (resPercent / 100) * 100) / 100 : null
 
           // Busca IDs dos produtos pelo nome
           const orderItems = []
@@ -575,6 +599,7 @@ export class OpenAiService {
               remoteJid: this._currentRemoteJid || null,
               deliveryType: args.deliveryType,
               deliveryAddress: args.deliveryAddress,
+              deliveryFee: deliveryFee || null,
               notes: args.notes || null,
               total,
               reservation,
@@ -586,14 +611,29 @@ export class OpenAiService {
             include: { items: { include: { product: true } } },
           })
 
-          return JSON.stringify({
+          let message = `Pedido #${order.id} criado com sucesso! Subtotal: R$ ${itemsTotal.toFixed(2)}.`
+          if (deliveryFee > 0) message += ` Taxa de entrega: R$ ${deliveryFee.toFixed(2)}.`
+          message += ` Total: R$ ${total.toFixed(2)}.`
+          if (reservation) message += ` Reserva (${resPercent}%): R$ ${reservation.toFixed(2)}.`
+
+          const result = {
             success: true,
             orderId: order.id,
+            subtotal: itemsTotal.toFixed(2),
+            deliveryFee: deliveryFee > 0 ? deliveryFee.toFixed(2) : null,
             total: total.toFixed(2),
-            reservation: reservation.toFixed(2),
             itemCount: order.items.length,
-            message: `Pedido #${order.id} criado com sucesso! Total: R$ ${total.toFixed(2)}. Reserva (30%): R$ ${reservation.toFixed(2)}.`,
-          })
+            message,
+          }
+          if (reservation) {
+            result.reservation = reservation.toFixed(2)
+            result.reservationPercent = resPercent
+            result.hasReservation = true
+          } else {
+            result.hasReservation = false
+          }
+
+          return JSON.stringify(result)
         } catch (err) {
           console.error('Erro ao criar pedido:', err.message)
           return JSON.stringify({ success: false, error: 'Erro ao criar pedido. Tente novamente.' })
@@ -690,6 +730,11 @@ export class OpenAiService {
       where: { userId, active: true },
       orderBy: [{ category: 'asc' }, { sortOrder: 'asc' }],
     })
+
+    // Extrai configurações de reserva e taxa de entrega das instruções
+    const hasReservation = this._hasReservation(instructions)
+    const reservationPercent = hasReservation ? (this._extractReservationPercent(instructions) || 30) : null
+    const deliveryFees = this._extractDeliveryFees(instructions)
 
     const categoryLabels = {
       GREETING: 'Saudação',
@@ -788,7 +833,20 @@ export class OpenAiService {
     prompt += `g) Se tiver ENTREGA disponível:\n`
     prompt += `   - Pergunte se prefere entrega ou retirada\n`
     prompt += `   - Se entrega, use o endereço cadastrado do cliente\n`
-    prompt += `   - Se retirada, informe o endereço da loja\n\n`
+    prompt += `   - Se retirada, informe o endereço da loja\n`
+
+    if (deliveryFees.length > 0) {
+      prompt += `\n### TAXAS DE ENTREGA\n\n`
+      prompt += `As taxas de entrega por localidade são:\n`
+      deliveryFees.forEach(f => {
+        prompt += `- ${f.location}: R$ ${f.value.toFixed(2)}\n`
+      })
+      prompt += `\nInforme a taxa de entrega ao cliente com base no bairro/cidade. Inclua a taxa no total do pedido.\n`
+      prompt += `Se o bairro/cidade não estiver na lista, informe que não há entrega disponível para a localidade e ofereça retirada no local.\n`
+      prompt += `Ao criar o pedido, passe o campo "deliveryFee" com o valor da taxa e os campos "neighborhood" e "city".\n\n`
+    }
+
+    prompt += '\n'
 
     prompt += `### CONFIRMAÇÃO E CRIAÇÃO DO PEDIDO\n\n`
     prompt += `h) Apresente o resumo completo do pedido ANTES de criar. ATENÇÃO: você DEVE listar TODOS os itens que o cliente pediu durante a conversa, com os nomes reais dos produtos, quantidades e preços do catálogo. NÃO use placeholders como "[Itens e quantidades do pedido a serem listados]" ou "R$ ValorTotal". Calcule os valores reais.\n\n`
@@ -801,9 +859,15 @@ export class OpenAiService {
     prompt += `(liste CADA item que o cliente pediu, ex:)\n`
     prompt += `- 2x Bolo de Chocolate - R$ 120,00\n`
     prompt += `- 1x Brigadeiro (cento) - R$ 80,00\n\n`
-    prompt += `💰 *Total: R$ (soma real calculada)*\n`
-    prompt += `💳 *Reserva (30%): R$ (30% do total real)*\n\n`
-    prompt += `📍 *Entrega:* (endereço real do cliente) OU *Retirada no local:* (endereço real da loja)\n\n`
+    prompt += `💰 *Subtotal: R$ (soma dos itens)*\n`
+    if (deliveryFees.length > 0) {
+      prompt += `🚚 *Taxa de entrega: R$ (taxa conforme localidade)* (se for entrega)\n`
+    }
+    prompt += `💰 *Total: R$ (subtotal + taxa de entrega)*\n`
+    if (hasReservation) {
+      prompt += `💳 *Reserva (${reservationPercent}%): R$ (${reservationPercent}% do subtotal)*\n`
+    }
+    prompt += `\n📍 *Entrega:* (endereço real do cliente) OU *Retirada no local:* (endereço real da loja)\n\n`
     prompt += `Posso confirmar este pedido?\n`
     prompt += `---\n\n`
 
@@ -818,19 +882,28 @@ export class OpenAiService {
 
     prompt += `j) Após o pedido ser criado com sucesso, mostre a confirmação com o número do pedido:\n\n`
     prompt += `---\n`
-    prompt += `✅ *Pedido #(número retornado) Confirmado!*\n\n`
+    prompt += `✅ *Pedido #(número retornado) Criado!*\n\n`
     prompt += `💰 *Total:* R$ (total)\n`
-    prompt += `💳 *Reserva (30%):* R$ (reserva)\n\n`
-    prompt += `Efetue o pagamento da reserva e envie o comprovante aqui.\n`
-    prompt += `Assim que recebermos, vamos confirmar e iniciar a produção! 🎂\n`
+    if (hasReservation) {
+      prompt += `💳 *Reserva (${reservationPercent}%):* R$ (reserva)\n\n`
+      prompt += `Efetue o pagamento da reserva e envie o comprovante aqui.\n`
+      prompt += `Assim que recebermos, vamos confirmar e iniciar a produção! 🎂\n`
+    } else {
+      prompt += `\nEfetue o pagamento total e envie o comprovante aqui.\n`
+      prompt += `Assim que recebermos e o administrador confirmar, iniciaremos a produção! 🎂\n`
+    }
     prompt += `---\n\n`
 
     prompt += `### RECEBIMENTO DO COMPROVANTE DE PAGAMENTO\n\n`
     prompt += `k) Quando o cliente enviar uma IMAGEM ou PDF de comprovante de pagamento (pix, transferência, depósito), use a função "registrar_pagamento" passando o customerPhone.\n`
     prompt += `   - O sistema vai salvar a imagem do comprovante automaticamente\n`
-    prompt += `   - O pedido será atualizado para status RESERVATION\n`
-    prompt += `   - Informe ao cliente que recebemos o comprovante e que iremos confirmar o pagamento e iniciar a produção\n`
-    prompt += `   - Mensagem sugerida: "Recebemos o comprovante de pagamento do Pedido #(número)! 🎉 Vamos confirmar o pagamento e em breve iniciaremos a produção do seu pedido. Obrigado!"\n\n`
+    prompt += `   - O pedido será atualizado para status RESERVATION (aguardando verificação do administrador)\n`
+    prompt += `   - Informe ao cliente que recebemos o comprovante e que o administrador irá verificar\n`
+    if (hasReservation) {
+      prompt += `   - Mensagem sugerida: "Recebemos o comprovante de pagamento da reserva do Pedido #(número)! 🎉 O administrador vai verificar o pagamento. Após a confirmação, iniciaremos a produção. Obrigado!"\n\n`
+    } else {
+      prompt += `   - Mensagem sugerida: "Recebemos o comprovante de pagamento do Pedido #(número)! 🎉 O administrador vai verificar o pagamento e em breve iniciaremos a produção. Obrigado!"\n\n`
+    }
 
     prompt += `IMPORTANTE:\n`
     prompt += `- Quando o cliente escolher uma categoria, responda SOMENTE com [MOSTRAR_PRODUTOS:NomeDaCategoria], sem nenhum texto antes ou depois\n`
@@ -842,7 +915,14 @@ export class OpenAiService {
     prompt += `- SEMPRE use a função "registrar_pagamento" quando o cliente enviar comprovante\n`
     prompt += `- Sempre use os preços exatos do catálogo acima\n`
     prompt += `- Calcule o total corretamente (quantidade x preço de cada item)\n`
-    prompt += `- A reserva é sempre 30% do total\n`
+    if (hasReservation) {
+      prompt += `- A reserva é ${reservationPercent}% do subtotal dos itens\n`
+    } else {
+      prompt += `- Este estabelecimento NÃO trabalha com reserva. O pagamento é integral.\n`
+    }
+    if (deliveryFees.length > 0) {
+      prompt += `- Inclua a taxa de entrega no resumo e no total do pedido quando for ENTREGA\n`
+    }
     prompt += `- NUNCA use placeholders genéricos no resumo do pedido. Preencha com os dados REAIS do cliente e dos itens pedidos\n`
     prompt += `- Mantenha controle mental de TODOS os itens que o cliente pediu durante a conversa\n`
     prompt += `- Formate valores em Real brasileiro (R$ X.XXX,XX)\n`
@@ -851,6 +931,67 @@ export class OpenAiService {
     prompt += `- Não invente produtos que não estão no catálogo\n`
 
     return prompt.trim()
+  }
+
+  // Extrai porcentagem de reserva das instruções da categoria ORDERS (null se não houver)
+  _extractReservationPercent(instructions) {
+    const orderInstructions = instructions.filter((i) => i.category === 'ORDERS')
+    for (const inst of orderInstructions) {
+      const match = inst.content.match(/reserva[:\s]*(\d+)\s*%/i)
+        || inst.content.match(/(\d+)\s*%\s*(?:de\s+)?reserva/i)
+        || inst.content.match(/porcentagem[:\s]*(\d+)/i)
+      if (match) return Number(match[1])
+    }
+    return null // sem reserva configurada
+  }
+
+  // Verifica se o sistema de reserva está habilitado nas instruções
+  _hasReservation(instructions) {
+    const orderInstructions = instructions.filter((i) => i.category === 'ORDERS')
+    const content = orderInstructions.map(i => i.content).join(' ').toLowerCase()
+    return content.includes('reserva') || content.includes('sinal')
+  }
+
+  // Extrai taxas de entrega por bairro/cidade das instruções ORDERS
+  _extractDeliveryFees(instructions) {
+    const orderInstructions = instructions.filter((i) => i.category === 'ORDERS')
+    const fees = []
+    for (const inst of orderInstructions) {
+      // Padrões: "Bairro Centro: R$ 5,00" ou "Centro - R$ 5" ou "Centro: 5,00" ou "Centro = R$ 5,00"
+      const lines = inst.content.split('\n')
+      for (const line of lines) {
+        const match = line.match(/(.+?)[\s]*[-:=][\s]*R?\$?\s*(\d+(?:[.,]\d{1,2})?)/i)
+        if (match) {
+          const location = match[1].trim().replace(/^[-•*]\s*/, '').trim()
+          const value = Number(match[2].replace(',', '.'))
+          // Ignora se a linha parece ser sobre reserva/porcentagem
+          if (location.toLowerCase().includes('reserva') || location.toLowerCase().includes('porcentagem')) continue
+          // Ignora se o valor parece ser porcentagem
+          if (line.includes('%')) continue
+          // Só adiciona se parecer um bairro/cidade (não muito longo)
+          if (location.length > 0 && location.length < 60 && value > 0) {
+            fees.push({ location: location.toLowerCase(), value })
+          }
+        }
+      }
+    }
+    return fees
+  }
+
+  // Busca taxa de entrega para um bairro/cidade específico
+  _findDeliveryFee(fees, neighborhood, city) {
+    if (!fees.length) return 0
+    const nb = (neighborhood || '').toLowerCase().trim()
+    const ct = (city || '').toLowerCase().trim()
+    // Tenta encontrar por bairro
+    for (const fee of fees) {
+      if (nb && (nb.includes(fee.location) || fee.location.includes(nb))) return fee.value
+    }
+    // Tenta encontrar por cidade
+    for (const fee of fees) {
+      if (ct && (ct.includes(fee.location) || fee.location.includes(ct))) return fee.value
+    }
+    return 0
   }
 
   // Obtém ou cria contexto de conversa
