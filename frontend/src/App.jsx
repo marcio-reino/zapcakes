@@ -22,6 +22,12 @@ import ClientInstances from './pages/client/Instances.jsx'
 import ClientChatbot from './pages/client/Chatbot.jsx'
 import ClientOrders from './pages/client/Orders.jsx'
 
+// Shared pages (used by both admin and client)
+import Categories from './pages/admin/Categories.jsx'
+import Products from './pages/admin/Products.jsx'
+import Combos from './pages/admin/Combos.jsx'
+import Agent from './pages/admin/Agent.jsx'
+
 function PrivateRoute({ children, adminOnly = false }) {
   const { user, loading } = useAuth()
 
@@ -58,8 +64,10 @@ export default function App() {
       {/* Client Routes */}
       <Route path="/client" element={<PrivateRoute><ClientLayout /></PrivateRoute>}>
         <Route index element={<ClientDashboard />} />
-        <Route path="instances" element={<ClientInstances />} />
-        <Route path="chatbot" element={<ClientChatbot />} />
+        <Route path="categories" element={<Categories />} />
+        <Route path="products" element={<Products />} />
+        <Route path="combos" element={<Combos />} />
+        <Route path="agent" element={<Agent />} />
         <Route path="orders" element={<ClientOrders />} />
       </Route>
 

@@ -1,12 +1,14 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import { useTheme } from '../contexts/ThemeContext.jsx'
-import { FiHome, FiSmartphone, FiMessageSquare, FiShoppingCart, FiLogOut, FiMoon, FiSun } from 'react-icons/fi'
+import { FiHome, FiGrid, FiPackage, FiLayers, FiCpu, FiShoppingCart, FiLogOut, FiMoon, FiSun } from 'react-icons/fi'
 
 const menuItems = [
   { path: '/client', icon: FiHome, label: 'Dashboard' },
-  { path: '/client/instances', icon: FiSmartphone, label: 'WhatsApp' },
-  { path: '/client/chatbot', icon: FiMessageSquare, label: 'Chatbot' },
+  { path: '/client/categories', icon: FiGrid, label: 'Categorias' },
+  { path: '/client/products', icon: FiPackage, label: 'Produtos' },
+  { path: '/client/combos', icon: FiLayers, label: 'Combos' },
+  { path: '/client/agent', icon: FiCpu, label: 'Agente' },
   { path: '/client/orders', icon: FiShoppingCart, label: 'Pedidos' },
 ]
 
