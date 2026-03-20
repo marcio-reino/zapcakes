@@ -130,6 +130,13 @@ export default function Customers() {
     }
   }
 
+  function formatPhone(value) {
+    const digits = value.replace(/\D/g, '').slice(0, 11)
+    if (digits.length <= 2) return digits.length ? `(${digits}` : ''
+    if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`
+  }
+
   const filtered = customers.filter((c) => {
     if (!search.trim()) return true
     const q = search.toLowerCase()
@@ -172,7 +179,7 @@ export default function Customers() {
           <thead className="bg-gray-50 dark:bg-gray-700">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Nome</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Telefone</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Celular</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Email</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Cidade/UF</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Status</th>
@@ -249,8 +256,8 @@ export default function Customers() {
                 <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputClass} placeholder="Nome do cliente" required />
               </div>
               <div>
-                <label className={labelClass}>Telefone</label>
-                <input type="text" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className={inputClass} placeholder="(00) 00000-0000" />
+                <label className={labelClass}>Celular</label>
+                <input type="text" value={form.phone} onChange={(e) => setForm({ ...form, phone: formatPhone(e.target.value) })} className={inputClass} placeholder="(00) 00000-0000" maxLength={15} />
               </div>
               <div>
                 <label className={labelClass}>Email</label>
