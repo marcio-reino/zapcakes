@@ -97,6 +97,9 @@ export class OpenAiService {
 
     if (categories.length === 0) return ''
 
+    // Verifica se existem combos para incluir na lista
+    const comboCount = await prisma.combo.count({ where: { userId, active: true } })
+
     let catalog = '\n\n## CATÁLOGO DE PRODUTOS\n\n'
     catalog += 'Quando o cliente perguntar sobre produtos, apresente as categorias numeradas:\n\n'
 
@@ -104,11 +107,15 @@ export class OpenAiService {
       catalog += `${i + 1}. ${cat.name}\n`
     })
 
-    catalog += '\nApós o cliente escolher a categoria, você DEVE responder APENAS com o comando:\n'
+    if (comboCount > 0) {
+      catalog += `${categories.length + 1}. 🎉 Combos / Promoções\n`
+    }
+
+    catalog += '\nApós o cliente escolher uma categoria de produto, você DEVE responder APENAS com o comando:\n'
     catalog += '[MOSTRAR_PRODUTOS:NomeDaCategoria]\n\n'
-    catalog += 'Exemplo: se o cliente escolher "Bolos", responda:\n'
-    catalog += '[MOSTRAR_PRODUTOS:Bolos]\n\n'
-    catalog += 'O sistema vai enviar automaticamente as imagens dos produtos com preços.\n'
+    catalog += 'Se o cliente escolher Combos/Promoções, responda APENAS com o comando:\n'
+    catalog += '[MOSTRAR_COMBOS]\n\n'
+    catalog += 'O sistema vai enviar automaticamente as imagens dos produtos/combos com preços.\n'
     catalog += 'Após enviar as imagens, pergunte qual produto o cliente deseja e a quantidade.\n\n'
 
     catalog += 'Lista completa de categorias e produtos (para referência de preços):\n\n'
