@@ -1,10 +1,85 @@
 import openai from '../config/openai.js'
 import prisma from '../config/database.js'
 import evolutionApi from '../config/evolution.js'
+import bcrypt from 'bcryptjs'
 
 // Cache de conversas em memória (remoteJid -> messages[])
 const conversationCache = new Map()
 const CONVERSATION_TTL = 30 * 60 * 1000 // 30 minutos
+
+// Definição das tools do OpenAI para o agente
+const agentTools = [
+  {
+    type: 'function',
+    function: {
+      name: 'buscar_cliente',
+      description: 'Busca um cliente pelo número de celular com DDD (ex: 22998524209). Use quando o cliente informar o telefone para identificação.',
+      parameters: {
+        type: 'object',
+        properties: {
+          phone: {
+            type: 'string',
+            description: 'Número de celular com DDD, apenas números (ex: 22998524209)',
+          },
+        },
+        required: ['phone'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'cadastrar_cliente',
+      description: 'Cadastra um novo cliente na base de dados. Use após confirmar todos os dados com o cliente.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Nome completo do cliente' },
+          phone: { type: 'string', description: 'Celular com DDD, apenas números' },
+          email: { type: 'string', description: 'E-mail do cliente (opcional)' },
+          zipCode: { type: 'string', description: 'CEP apenas números (opcional)' },
+          street: { type: 'string', description: 'Rua/Logradouro' },
+          number: { type: 'string', description: 'Número' },
+          complement: { type: 'string', description: 'Complemento (opcional)' },
+          neighborhood: { type: 'string', description: 'Bairro' },
+          city: { type: 'string', description: 'Cidade' },
+          state: { type: 'string', description: 'Estado (sigla UF, ex: RJ)' },
+          reference: { type: 'string', description: 'Ponto de referência (opcional)' },
+        },
+        required: ['name', 'phone'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'consultar_cep',
+      description: 'Consulta um CEP na API ViaCEP para preencher automaticamente o endereço. Use quando o cliente informar o CEP.',
+      parameters: {
+        type: 'object',
+        properties: {
+          cep: {
+            type: 'string',
+            description: 'CEP com 8 dígitos, apenas números (ex: 28035100)',
+          },
+        },
+        required: ['cep'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'verificar_entrega',
+      description: 'Verifica nas instruções do agente se existe configuração de tipo de entrega (delivery/retirada). Use antes de perguntar endereço ao cliente.',
+      parameters: {
+        type: 'object',
+        properties: {},
+        required: [],
+      },
+    },
+  },
+]
 
 export class OpenAiService {
   // Busca catálogo de produtos agrupado por categoria
@@ -134,7 +209,6 @@ export class OpenAiService {
             caption,
           })
         } catch {
-          // Se falhar o envio de imagem, envia como texto
           await evolutionApi.post(`/message/sendText/${instanceName}`, {
             number,
             text: caption,
@@ -148,12 +222,136 @@ export class OpenAiService {
       }
     }
 
-    // Envia mensagem final perguntando a escolha
     await this.sendTyping(instanceName, remoteJid)
     await evolutionApi.post(`/message/sendText/${instanceName}`, {
       number,
       text: `Esses são os nossos produtos de *${category.name}*! 😊\n\nQual produto você gostaria de pedir e em que quantidade?`,
     })
+  }
+
+  // Executa uma tool call do OpenAI
+  async executeToolCall(toolName, args, userId) {
+    switch (toolName) {
+      case 'buscar_cliente': {
+        const phone = args.phone.replace(/\D/g, '')
+        const customer = await prisma.customer.findFirst({
+          where: {
+            userId,
+            phone: { contains: phone },
+            active: true,
+          },
+        })
+        if (customer) {
+          return JSON.stringify({
+            found: true,
+            id: customer.id,
+            name: customer.name,
+            phone: customer.phone,
+            email: customer.email || null,
+            street: customer.street || null,
+            number: customer.number || null,
+            complement: customer.complement || null,
+            neighborhood: customer.neighborhood || null,
+            city: customer.city || null,
+            state: customer.state || null,
+            zipCode: customer.zipCode || null,
+            reference: customer.reference || null,
+          })
+        }
+        return JSON.stringify({ found: false, message: 'Cliente não encontrado com este número.' })
+      }
+
+      case 'cadastrar_cliente': {
+        const data = {
+          userId,
+          name: args.name,
+          phone: args.phone.replace(/\D/g, ''),
+        }
+        if (args.email) data.email = args.email
+        if (args.zipCode) data.zipCode = args.zipCode.replace(/\D/g, '')
+        if (args.street) data.street = args.street
+        if (args.number) data.number = args.number
+        if (args.complement) data.complement = args.complement
+        if (args.neighborhood) data.neighborhood = args.neighborhood
+        if (args.city) data.city = args.city
+        if (args.state) data.state = args.state
+        if (args.reference) data.reference = args.reference
+
+        // Gera senha padrão com os 4 últimos dígitos do telefone
+        const lastDigits = data.phone.slice(-4)
+        data.password = await bcrypt.hash(lastDigits, 10)
+
+        const customer = await prisma.customer.create({ data })
+        return JSON.stringify({
+          success: true,
+          id: customer.id,
+          name: customer.name,
+          phone: customer.phone,
+          message: 'Cliente cadastrado com sucesso!',
+        })
+      }
+
+      case 'consultar_cep': {
+        const cep = args.cep.replace(/\D/g, '')
+        try {
+          const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`)
+          const data = await response.json()
+          if (data.erro) {
+            return JSON.stringify({ found: false, message: 'CEP não encontrado.' })
+          }
+          return JSON.stringify({
+            found: true,
+            street: data.logradouro || '',
+            neighborhood: data.bairro || '',
+            city: data.localidade || '',
+            state: data.uf || '',
+            zipCode: cep,
+          })
+        } catch {
+          return JSON.stringify({ found: false, message: 'Erro ao consultar CEP.' })
+        }
+      }
+
+      case 'verificar_entrega': {
+        const instructions = await prisma.agentInstruction.findMany({
+          where: { userId, active: true },
+        })
+        const allContent = instructions.map(i => `${i.title} ${i.content}`).join(' ').toLowerCase()
+        const hasDelivery = allContent.includes('entrega') || allContent.includes('delivery') || allContent.includes('frete')
+        const hasPickup = allContent.includes('retirada') || allContent.includes('retirar') || allContent.includes('buscar no local')
+
+        // Busca endereço da empresa (do User)
+        const user = await prisma.user.findUnique({ where: { id: userId } })
+        const companyAddress = [user?.street, user?.number, user?.neighborhood, user?.city, user?.state]
+          .filter(Boolean).join(', ')
+
+        if (hasDelivery && hasPickup) {
+          return JSON.stringify({
+            deliveryAvailable: true,
+            pickupAvailable: true,
+            companyAddress: companyAddress || 'Endereço não cadastrado',
+            message: 'Entrega e retirada no local disponíveis. Pergunte ao cliente qual prefere.',
+          })
+        } else if (hasDelivery) {
+          return JSON.stringify({
+            deliveryAvailable: true,
+            pickupAvailable: false,
+            companyAddress: companyAddress || 'Endereço não cadastrado',
+            message: 'Apenas entrega disponível. Peça o endereço do cliente.',
+          })
+        } else {
+          return JSON.stringify({
+            deliveryAvailable: false,
+            pickupAvailable: true,
+            companyAddress: companyAddress || 'Endereço não cadastrado',
+            message: `Apenas retirada no local. Informe o endereço: ${companyAddress || 'Endereço não cadastrado'}`,
+          })
+        }
+      }
+
+      default:
+        return JSON.stringify({ error: 'Função não encontrada' })
+    }
   }
 
   // Monta instrução do sistema baseado nas instruções cadastradas + catálogo
@@ -200,24 +398,72 @@ export class OpenAiService {
     prompt += `2. Quando ele escolher a categoria, responda APENAS com o comando [MOSTRAR_PRODUTOS:NomeDaCategoria] - o sistema vai enviar as fotos dos produtos automaticamente\n`
     prompt += `3. Após as imagens serem enviadas, pergunte qual produto deseja e a quantidade\n`
     prompt += `4. O cliente pode adicionar mais produtos ao pedido\n`
-    prompt += `5. Quando o cliente finalizar, pergunte o nome e endereço de entrega\n`
-    prompt += `6. Ao concluir, apresente o resumo assim:\n\n`
+    prompt += `5. Quando o cliente quiser finalizar o pedido, ANTES de confirmar, siga este fluxo obrigatório:\n\n`
+
+    prompt += `### IDENTIFICAÇÃO DO CLIENTE (obrigatório antes de fechar pedido)\n\n`
+    prompt += `a) Peça o número de celular com DDD para identificação (ex: 22 99852-4209)\n`
+    prompt += `b) Use a função "buscar_cliente" para procurar o cliente na base\n`
+    prompt += `c) Se o cliente for ENCONTRADO:\n`
+    prompt += `   - Mostre os dados cadastrados (nome, telefone, endereço completo)\n`
+    prompt += `   - Peça confirmação: "Estes dados estão corretos?"\n`
+    prompt += `   - Se confirmar, prossiga para a verificação de entrega\n`
+    prompt += `d) Se o cliente NÃO for encontrado:\n`
+    prompt += `   - Informe que não encontrou cadastro com esse número\n`
+    prompt += `   - Pergunte: "Deseja tentar outro número ou fazer um novo cadastro?"\n`
+    prompt += `   - Se quiser tentar outro número, peça o novo número e busque novamente\n`
+    prompt += `   - Se quiser cadastrar, colete os dados na seguinte ordem:\n`
+    prompt += `     1. Nome completo\n`
+    prompt += `     2. E-mail (opcional)\n`
+    prompt += `     3. CEP - use a função "consultar_cep" para preencher endereço automaticamente\n`
+    prompt += `        - Se o CEP for encontrado, mostre o endereço e peça apenas o número e complemento\n`
+    prompt += `        - Se o CEP não for encontrado ou o cliente não souber, peça: rua, número, bairro, cidade, estado\n`
+    prompt += `     4. Complemento (opcional)\n`
+    prompt += `     5. Ponto de referência (opcional)\n`
+    prompt += `   - Antes de cadastrar, mostre TODOS os dados para confirmação:\n`
+    prompt += `     "Vou cadastrar seus dados assim:\n`
+    prompt += `     📋 Nome: ...\n`
+    prompt += `     📱 Celular: ...\n`
+    prompt += `     📧 E-mail: ...\n`
+    prompt += `     📍 Endereço: Rua ..., Nº ..., Bairro ..., Cidade/UF, CEP ...\n`
+    prompt += `     Está tudo correto?"\n`
+    prompt += `   - Somente após confirmação, use a função "cadastrar_cliente"\n\n`
+
+    prompt += `### VERIFICAÇÃO DE ENTREGA\n\n`
+    prompt += `e) Use a função "verificar_entrega" para checar os tipos de entrega disponíveis\n`
+    prompt += `f) Se só tiver RETIRADA no local:\n`
+    prompt += `   - Informe o endereço da loja e diga que o pedido será para retirada\n`
+    prompt += `g) Se tiver ENTREGA disponível:\n`
+    prompt += `   - Pergunte se prefere entrega ou retirada\n`
+    prompt += `   - Se entrega, use o endereço cadastrado do cliente\n`
+    prompt += `   - Se retirada, informe o endereço da loja\n\n`
+
+    prompt += `### CONFIRMAÇÃO DO PEDIDO\n\n`
+    prompt += `h) Apresente o resumo completo:\n\n`
     prompt += `---\n`
     prompt += `✅ *Pedido Confirmado!*\n\n`
     prompt += `📋 *Pedido #(número sequencial)*\n\n`
+    prompt += `👤 *Cliente:* Nome do cliente\n`
+    prompt += `📱 *Celular:* (XX) XXXXX-XXXX\n\n`
     prompt += `*Itens:*\n`
     prompt += `- Qtd x Produto - R$ valor\n`
     prompt += `- Qtd x Produto - R$ valor\n\n`
     prompt += `💰 *Total: R$ XXXXX*\n`
     prompt += `💳 *Reserva (30%): R$ XXXXX*\n\n`
+    prompt += `📍 *Entrega:* Endereço completo OU Retirada no local (endereço da loja)\n\n`
     prompt += `Efetue o pagamento da reserva e envie o comprovante aqui.\n`
     prompt += `---\n\n`
+
     prompt += `IMPORTANTE:\n`
     prompt += `- Quando o cliente escolher uma categoria, responda SOMENTE com [MOSTRAR_PRODUTOS:NomeDaCategoria], sem nenhum texto antes ou depois\n`
+    prompt += `- SEMPRE peça o celular com DDD antes de fechar o pedido\n`
+    prompt += `- SEMPRE busque o cliente na base antes de prosseguir\n`
+    prompt += `- SEMPRE verifique o tipo de entrega disponível\n`
+    prompt += `- SEMPRE confirme os dados com o cliente antes de cadastrar\n`
     prompt += `- Sempre use os preços exatos do catálogo acima\n`
     prompt += `- Calcule o total corretamente (quantidade x preço de cada item)\n`
     prompt += `- A reserva é sempre 30% do total\n`
     prompt += `- Formate valores em Real brasileiro (R$ X.XXX,XX)\n`
+    prompt += `- Formate celular como (XX) XXXXX-XXXX\n`
     prompt += `- Seja educado e prestativo\n`
     prompt += `- Não invente produtos que não estão no catálogo\n`
 
@@ -239,9 +485,22 @@ export class OpenAiService {
   addMessage(remoteJid, role, content) {
     const conv = this.getConversation(remoteJid)
     conv.push({ role, content })
-    // Mantém no máximo 30 mensagens de contexto
-    if (conv.length > 30) {
-      conv.splice(0, conv.length - 30)
+    // Mantém no máximo 50 mensagens de contexto (aumentado para suportar tool calls)
+    if (conv.length > 50) {
+      conv.splice(0, conv.length - 50)
+    }
+    conversationCache.set(remoteJid, { messages: conv, lastActivity: Date.now() })
+  }
+
+  // Adiciona mensagem de tool call ao contexto
+  addToolMessages(remoteJid, assistantMessage, toolResults) {
+    const conv = this.getConversation(remoteJid)
+    conv.push(assistantMessage)
+    for (const result of toolResults) {
+      conv.push(result)
+    }
+    if (conv.length > 50) {
+      conv.splice(0, conv.length - 50)
     }
     conversationCache.set(remoteJid, { messages: conv, lastActivity: Date.now() })
   }
@@ -256,6 +515,58 @@ export class OpenAiService {
     }
   }
 
+  // Loop de processamento com tool calls
+  async processWithTools(messages, userId, remoteJid, instanceName) {
+    let maxIterations = 5 // Evita loops infinitos
+
+    while (maxIterations > 0) {
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages,
+        max_tokens: 1024,
+        temperature: 0.7,
+        tools: agentTools,
+        tool_choice: 'auto',
+      })
+
+      const choice = completion.choices[0]
+      const assistantMessage = choice.message
+
+      // Se não tem tool calls, retorna a resposta final
+      if (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) {
+        return assistantMessage.content || 'Desculpe, não consegui processar sua mensagem.'
+      }
+
+      // Processa cada tool call
+      const toolResults = []
+      for (const toolCall of assistantMessage.tool_calls) {
+        const args = JSON.parse(toolCall.function.arguments)
+        const result = await this.executeToolCall(toolCall.function.name, args, userId)
+        toolResults.push({
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          content: result,
+        })
+      }
+
+      // Adiciona ao contexto da conversa
+      this.addToolMessages(remoteJid, assistantMessage, toolResults)
+
+      // Atualiza messages para a próxima iteração
+      messages.push(assistantMessage)
+      messages.push(...toolResults)
+
+      // Se o agente está digitando enquanto processa tools, mostra typing
+      if (instanceName) {
+        await this.sendTyping(instanceName, remoteJid)
+      }
+
+      maxIterations--
+    }
+
+    return 'Desculpe, ocorreu um erro ao processar sua solicitação. Por favor, tente novamente.'
+  }
+
   // Processa mensagem e retorna resposta da OpenAI
   async chat(userId, remoteJid, userMessage, instanceName = null) {
     const systemPrompt = await this.buildSystemPrompt(userId)
@@ -268,14 +579,7 @@ export class OpenAiService {
       ...this.getConversation(remoteJid),
     ]
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages,
-      max_tokens: 1024,
-      temperature: 0.7,
-    })
-
-    let reply = completion.choices[0]?.message?.content || 'Desculpe, não consegui processar sua mensagem.'
+    let reply = await this.processWithTools(messages, userId, remoteJid, instanceName)
 
     // Verifica se a resposta contém o comando de mostrar produtos
     const productMatch = reply.match(/\[MOSTRAR_PRODUTOS:(.+?)\]/)
@@ -283,11 +587,10 @@ export class OpenAiService {
       const categoryName = productMatch[1].trim()
       await this.sendProductImages(userId, instanceName, remoteJid, categoryName)
 
-      // Substitui o comando por uma mensagem no contexto
       reply = `[Imagens dos produtos de ${categoryName} enviadas ao cliente]`
       this.addMessage(remoteJid, 'assistant', reply)
       this.clearExpired()
-      return null // Sinaliza que já enviou as mensagens
+      return null
     }
 
     // Adiciona resposta ao contexto
@@ -314,14 +617,7 @@ export class OpenAiService {
       ...this.getConversation(remoteJid),
     ]
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages,
-      max_tokens: 1024,
-      temperature: 0.7,
-    })
-
-    let reply = completion.choices[0]?.message?.content || 'Desculpe, não consegui processar sua mensagem.'
+    let reply = await this.processWithTools(messages, userId, remoteJid, instanceName)
 
     const productMatch = reply.match(/\[MOSTRAR_PRODUTOS:(.+?)\]/)
     if (productMatch && instanceName) {
