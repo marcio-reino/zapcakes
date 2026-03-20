@@ -142,14 +142,30 @@ export class OpenAiService {
     if (combos.length === 0) return ''
 
     let comboText = '\n\n## COMBOS DISPONÍVEIS\n\n'
+    comboText += 'Quando o cliente perguntar sobre combos ou promoções, responda APENAS com o comando:\n'
+    comboText += '[MOSTRAR_COMBOS]\n\n'
+    comboText += 'O sistema vai enviar automaticamente as imagens dos combos com detalhes e preços.\n'
+    comboText += 'Após enviar as imagens, pergunte qual combo o cliente deseja.\n\n'
+    comboText += 'Lista de combos (para referência de preços):\n\n'
+
     combos.forEach((combo, i) => {
       const discount = Number(combo.discount)
+      const totalItems = combo.items.reduce((sum, item) => sum + item.quantity * Number(item.product.price), 0)
+      const finalPrice = totalItems - discount
+
       comboText += `${i + 1}. *${combo.name}*`
       if (combo.description) comboText += ` - ${combo.description}`
-      if (discount > 0) comboText += ` (Desconto: ${discount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})`
       comboText += '\n   Inclui: '
-      comboText += combo.items.map(item => `${item.quantity}x ${item.product.name}`).join(', ')
-      comboText += '\n'
+      comboText += combo.items.map(item => {
+        const itemPrice = Number(item.product.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+        return `${item.quantity}x ${item.product.name} (${itemPrice})`
+      }).join(', ')
+      comboText += `\n   💰 Valor total: ${totalItems.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`
+      if (discount > 0) {
+        comboText += `\n   🏷️ Desconto: -${discount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`
+      }
+      comboText += `\n   ✅ Valor final: *${finalPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}*`
+      comboText += '\n\n'
     })
 
     return comboText
@@ -226,6 +242,78 @@ export class OpenAiService {
     await evolutionApi.post(`/message/sendText/${instanceName}`, {
       number,
       text: `Esses são os nossos produtos de *${category.name}*! 😊\n\nQual produto você gostaria de pedir e em que quantidade?`,
+    })
+  }
+
+  // Envia combos como mensagens individuais com imagem no WhatsApp
+  async sendComboImages(userId, instanceName, remoteJid) {
+    const number = remoteJid.replace('@s.whatsapp.net', '')
+
+    const combos = await prisma.combo.findMany({
+      where: { userId, active: true },
+      include: {
+        items: {
+          include: { product: true },
+          orderBy: { sortOrder: 'asc' },
+        },
+      },
+      orderBy: { name: 'asc' },
+    })
+
+    if (combos.length === 0) {
+      await evolutionApi.post(`/message/sendText/${instanceName}`, {
+        number,
+        text: 'No momento não temos combos disponíveis.',
+      })
+      return
+    }
+
+    for (const combo of combos) {
+      const discount = Number(combo.discount)
+      const totalItems = combo.items.reduce((sum, item) => sum + item.quantity * Number(item.product.price), 0)
+      const finalPrice = totalItems - discount
+
+      let caption = `*${combo.name}*\n`
+      if (combo.description) caption += `${combo.description}\n`
+      caption += '\n'
+      caption += combo.items.map(item => {
+        const itemPrice = Number(item.product.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+        return `• ${item.quantity}x ${item.product.name} (${itemPrice})`
+      }).join('\n')
+      caption += `\n\n💰 Valor total: ${totalItems.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`
+      if (discount > 0) {
+        caption += `\n🏷️ Desconto: -${discount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`
+      }
+      caption += `\n✅ *Valor final: ${finalPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}*`
+
+      await this.sendTyping(instanceName, remoteJid)
+
+      if (combo.imageUrl) {
+        try {
+          await evolutionApi.post(`/message/sendMedia/${instanceName}`, {
+            number,
+            mediatype: 'image',
+            media: combo.imageUrl,
+            caption,
+          })
+        } catch {
+          await evolutionApi.post(`/message/sendText/${instanceName}`, {
+            number,
+            text: caption,
+          })
+        }
+      } else {
+        await evolutionApi.post(`/message/sendText/${instanceName}`, {
+          number,
+          text: caption,
+        })
+      }
+    }
+
+    await this.sendTyping(instanceName, remoteJid)
+    await evolutionApi.post(`/message/sendText/${instanceName}`, {
+      number,
+      text: 'Esses são os nossos combos! 🎉\n\nQual combo você gostaria de pedir?',
     })
   }
 
@@ -650,6 +738,12 @@ export class OpenAiService {
       const categoryName = productMatch[1].trim()
       await this.sendProductImages(userId, instanceName, remoteJid, categoryName)
       return { reply: `[Imagens dos produtos de ${categoryName} enviadas ao cliente]`, handled: true }
+    }
+
+    // Comando: mostrar combos
+    if (reply.includes('[MOSTRAR_COMBOS]')) {
+      await this.sendComboImages(userId, instanceName, remoteJid)
+      return { reply: '[Imagens dos combos enviadas ao cliente]', handled: true }
     }
 
     // Comando: enviar anexo de instrução (pode ter texto junto)

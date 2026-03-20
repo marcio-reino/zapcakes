@@ -58,7 +58,7 @@ await app.register(evoAgentRoutes, { prefix: '/api/evo-agent' })
 await app.register(customerRoutes, { prefix: '/api/customers' })
 
 // Versão e health check
-const VERSION = '1.5.0'
+const VERSION = '1.6.0'
 app.get('/', async () => ({ name: 'ZapCakes API', version: VERSION }))
 app.get('/api/health', async () => ({ status: 'ok', version: VERSION, timestamp: new Date().toISOString() }))
 
