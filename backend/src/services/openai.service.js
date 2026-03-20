@@ -397,8 +397,9 @@ export class OpenAiService {
     prompt += `1. Quando o cliente perguntar sobre produtos, mostre as CATEGORIAS numeradas (1. Bolos, 2. Doces, etc.)\n`
     prompt += `2. Quando ele escolher a categoria, responda APENAS com o comando [MOSTRAR_PRODUTOS:NomeDaCategoria] - o sistema vai enviar as fotos dos produtos automaticamente\n`
     prompt += `3. Após as imagens serem enviadas, pergunte qual produto deseja e a quantidade\n`
-    prompt += `4. O cliente pode adicionar mais produtos ao pedido\n`
-    prompt += `5. Quando o cliente quiser finalizar o pedido, ANTES de confirmar, siga este fluxo obrigatório:\n\n`
+    prompt += `4. Quando o cliente escolher um produto e quantidade, CONFIRME o item adicionado (ex: "Adicionei 2x Bolo de Chocolate - R$ 120,00") e pergunte se deseja mais algum produto\n`
+    prompt += `5. O cliente pode adicionar mais produtos ao pedido. Mantenha a lista mental de TODOS os itens pedidos com nome, quantidade e preço unitário\n`
+    prompt += `6. Quando o cliente quiser finalizar o pedido, ANTES de confirmar, siga este fluxo obrigatório:\n\n`
 
     prompt += `### IDENTIFICAÇÃO DO CLIENTE (obrigatório antes de fechar pedido)\n\n`
     prompt += `a) Peça o número de celular com DDD para identificação (ex: 22 99852-4209)\n`
@@ -438,18 +439,20 @@ export class OpenAiService {
     prompt += `   - Se retirada, informe o endereço da loja\n\n`
 
     prompt += `### CONFIRMAÇÃO DO PEDIDO\n\n`
-    prompt += `h) Apresente o resumo completo:\n\n`
+    prompt += `h) Apresente o resumo completo do pedido. ATENÇÃO: você DEVE listar TODOS os itens que o cliente pediu durante a conversa, com os nomes reais dos produtos, quantidades e preços do catálogo. NÃO use placeholders como "[Itens e quantidades do pedido a serem listados]" ou "R$ ValorTotal". Calcule os valores reais.\n\n`
+    prompt += `Formato obrigatório do resumo (preencha com os dados REAIS):\n\n`
     prompt += `---\n`
     prompt += `✅ *Pedido Confirmado!*\n\n`
     prompt += `📋 *Pedido #(número sequencial)*\n\n`
-    prompt += `👤 *Cliente:* Nome do cliente\n`
-    prompt += `📱 *Celular:* (XX) XXXXX-XXXX\n\n`
+    prompt += `👤 *Cliente:* (nome real do cliente)\n`
+    prompt += `📱 *Celular:* (celular real formatado)\n\n`
     prompt += `*Itens:*\n`
-    prompt += `- Qtd x Produto - R$ valor\n`
-    prompt += `- Qtd x Produto - R$ valor\n\n`
-    prompt += `💰 *Total: R$ XXXXX*\n`
-    prompt += `💳 *Reserva (30%): R$ XXXXX*\n\n`
-    prompt += `📍 *Entrega:* Endereço completo OU Retirada no local (endereço da loja)\n\n`
+    prompt += `(liste CADA item que o cliente pediu, ex:)\n`
+    prompt += `- 2x Bolo de Chocolate - R$ 120,00\n`
+    prompt += `- 1x Brigadeiro (cento) - R$ 80,00\n\n`
+    prompt += `💰 *Total: R$ (soma real calculada)*\n`
+    prompt += `💳 *Reserva (30%): R$ (30% do total real)*\n\n`
+    prompt += `📍 *Entrega:* (endereço real do cliente) OU *Retirada no local:* (endereço real da loja)\n\n`
     prompt += `Efetue o pagamento da reserva e envie o comprovante aqui.\n`
     prompt += `---\n\n`
 
@@ -462,6 +465,8 @@ export class OpenAiService {
     prompt += `- Sempre use os preços exatos do catálogo acima\n`
     prompt += `- Calcule o total corretamente (quantidade x preço de cada item)\n`
     prompt += `- A reserva é sempre 30% do total\n`
+    prompt += `- NUNCA use placeholders genéricos no resumo do pedido. Preencha com os dados REAIS do cliente e dos itens pedidos\n`
+    prompt += `- Mantenha controle mental de TODOS os itens que o cliente pediu durante a conversa\n`
     prompt += `- Formate valores em Real brasileiro (R$ X.XXX,XX)\n`
     prompt += `- Formate celular como (XX) XXXXX-XXXX\n`
     prompt += `- Seja educado e prestativo\n`
