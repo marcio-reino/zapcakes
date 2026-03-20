@@ -1,11 +1,17 @@
 import openai from '../config/openai.js'
 import prisma from '../config/database.js'
 import evolutionApi from '../config/evolution.js'
+import { PutObjectCommand } from '@aws-sdk/client-s3'
+import s3Client, { S3_BUCKET } from '../config/s3.js'
+import { randomUUID } from 'crypto'
 import bcrypt from 'bcryptjs'
 
 // Cache de conversas em memória (remoteJid -> messages[])
 const conversationCache = new Map()
 const CONVERSATION_TTL = 30 * 60 * 1000 // 30 minutos
+
+// Cache temporário da última imagem recebida por jid (para comprovantes)
+const lastImageCache = new Map()
 
 // Definição das tools do OpenAI para o agente
 const agentTools = [
@@ -76,6 +82,52 @@ const agentTools = [
         type: 'object',
         properties: {},
         required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'criar_pedido',
+      description: 'Cria um pedido no sistema após o cliente confirmar todos os itens, dados e forma de entrega. Use SOMENTE após confirmação explícita do cliente.',
+      parameters: {
+        type: 'object',
+        properties: {
+          customerId: { type: 'number', description: 'ID do cliente cadastrado' },
+          customerName: { type: 'string', description: 'Nome do cliente' },
+          customerPhone: { type: 'string', description: 'Celular do cliente com DDD' },
+          deliveryType: { type: 'string', enum: ['ENTREGA', 'RETIRADA'], description: 'Tipo: ENTREGA ou RETIRADA' },
+          deliveryAddress: { type: 'string', description: 'Endereço de entrega ou da loja para retirada' },
+          notes: { type: 'string', description: 'Observações do pedido (sabores, decoração, data de entrega, etc)' },
+          items: {
+            type: 'array',
+            description: 'Lista de itens do pedido',
+            items: {
+              type: 'object',
+              properties: {
+                productName: { type: 'string', description: 'Nome do produto (exato do catálogo)' },
+                quantity: { type: 'number', description: 'Quantidade' },
+                price: { type: 'number', description: 'Preço unitário do produto' },
+              },
+              required: ['productName', 'quantity', 'price'],
+            },
+          },
+        },
+        required: ['customerId', 'customerName', 'customerPhone', 'deliveryType', 'deliveryAddress', 'items'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'registrar_pagamento',
+      description: 'Registra que o cliente enviou comprovante de pagamento da reserva. Use quando o cliente enviar foto/imagem do comprovante de pagamento.',
+      parameters: {
+        type: 'object',
+        properties: {
+          customerPhone: { type: 'string', description: 'Celular do cliente com DDD para localizar o pedido' },
+        },
+        required: ['customerPhone'],
       },
     },
   },
@@ -490,6 +542,143 @@ export class OpenAiService {
         }
       }
 
+      case 'criar_pedido': {
+        try {
+          const total = args.items.reduce((sum, item) => sum + item.quantity * item.price, 0)
+          const reservation = Math.round(total * 0.3 * 100) / 100
+
+          // Busca IDs dos produtos pelo nome
+          const orderItems = []
+          for (const item of args.items) {
+            const product = await prisma.product.findFirst({
+              where: {
+                userId,
+                active: true,
+                name: { contains: item.productName },
+              },
+            })
+            if (product) {
+              orderItems.push({
+                productId: product.id,
+                quantity: item.quantity,
+                price: item.price,
+              })
+            }
+          }
+
+          const order = await prisma.order.create({
+            data: {
+              userId,
+              customerId: args.customerId,
+              customerName: args.customerName,
+              customerPhone: args.customerPhone.replace(/\D/g, ''),
+              remoteJid: this._currentRemoteJid || null,
+              deliveryType: args.deliveryType,
+              deliveryAddress: args.deliveryAddress,
+              notes: args.notes || null,
+              total,
+              reservation,
+              status: 'PENDING',
+              items: {
+                create: orderItems,
+              },
+            },
+            include: { items: { include: { product: true } } },
+          })
+
+          return JSON.stringify({
+            success: true,
+            orderId: order.id,
+            total: total.toFixed(2),
+            reservation: reservation.toFixed(2),
+            itemCount: order.items.length,
+            message: `Pedido #${order.id} criado com sucesso! Total: R$ ${total.toFixed(2)}. Reserva (30%): R$ ${reservation.toFixed(2)}.`,
+          })
+        } catch (err) {
+          console.error('Erro ao criar pedido:', err.message)
+          return JSON.stringify({ success: false, error: 'Erro ao criar pedido. Tente novamente.' })
+        }
+      }
+
+      case 'registrar_pagamento': {
+        try {
+          const phone = args.customerPhone.replace(/\D/g, '')
+          // Busca o pedido mais recente PENDING desse cliente
+          const order = await prisma.order.findFirst({
+            where: {
+              userId,
+              customerPhone: { contains: phone },
+              status: 'PENDING',
+            },
+            orderBy: { createdAt: 'desc' },
+            include: { items: { include: { product: true } } },
+          })
+
+          if (!order) {
+            return JSON.stringify({
+              success: false,
+              message: 'Não encontrei nenhum pedido pendente para este número. Verifique o número ou se o pedido já foi confirmado.',
+            })
+          }
+
+          // Tenta salvar o comprovante (imagem do cache)
+          let paymentProofUrl = null
+          const cachedImage = lastImageCache.get(this._currentRemoteJid)
+          if (cachedImage) {
+            try {
+              // cachedImage é data:image/jpeg;base64,... - extrai o base64
+              const matches = cachedImage.match(/^data:(.+?);base64,(.+)$/)
+              if (matches) {
+                const mimeType = matches[1]
+                const base64Data = matches[2]
+                const buffer = Buffer.from(base64Data, 'base64')
+                const ext = mimeType.includes('pdf') ? '.pdf' : '.jpg'
+                const key = `comprovantes/${randomUUID()}${ext}`
+
+                await s3Client.send(
+                  new PutObjectCommand({
+                    Bucket: S3_BUCKET,
+                    Key: key,
+                    Body: buffer,
+                    ContentType: mimeType,
+                  })
+                )
+
+                paymentProofUrl = `${process.env.S3_ENDPOINT}/${S3_BUCKET}/${key}`
+              }
+            } catch (uploadErr) {
+              console.error('Erro ao salvar comprovante:', uploadErr.message)
+            }
+            lastImageCache.delete(this._currentRemoteJid)
+          }
+
+          await prisma.order.update({
+            where: { id: order.id },
+            data: {
+              status: 'RESERVATION',
+              ...(paymentProofUrl ? { paymentProof: paymentProofUrl } : {}),
+            },
+          })
+
+          const itemsList = order.items.map(i =>
+            `${i.quantity}x ${i.product.name} - R$ ${(i.quantity * Number(i.price)).toFixed(2)}`
+          ).join(', ')
+
+          return JSON.stringify({
+            success: true,
+            orderId: order.id,
+            total: Number(order.total).toFixed(2),
+            reservation: Number(order.reservation).toFixed(2),
+            items: itemsList,
+            proofSaved: !!paymentProofUrl,
+            message: `Pagamento da reserva registrado para o Pedido #${order.id}. ${paymentProofUrl ? 'Comprovante salvo.' : ''} Vamos confirmar o pagamento e iniciar a produção.`,
+          })
+        } catch (err) {
+          console.error('Erro ao registrar pagamento:', err.message)
+          return JSON.stringify({ success: false, error: 'Erro ao registrar pagamento. Tente novamente.' })
+        }
+      }
+
       default:
         return JSON.stringify({ error: 'Função não encontrada' })
     }
@@ -601,12 +790,11 @@ export class OpenAiService {
     prompt += `   - Se entrega, use o endereço cadastrado do cliente\n`
     prompt += `   - Se retirada, informe o endereço da loja\n\n`
 
-    prompt += `### CONFIRMAÇÃO DO PEDIDO\n\n`
-    prompt += `h) Apresente o resumo completo do pedido. ATENÇÃO: você DEVE listar TODOS os itens que o cliente pediu durante a conversa, com os nomes reais dos produtos, quantidades e preços do catálogo. NÃO use placeholders como "[Itens e quantidades do pedido a serem listados]" ou "R$ ValorTotal". Calcule os valores reais.\n\n`
+    prompt += `### CONFIRMAÇÃO E CRIAÇÃO DO PEDIDO\n\n`
+    prompt += `h) Apresente o resumo completo do pedido ANTES de criar. ATENÇÃO: você DEVE listar TODOS os itens que o cliente pediu durante a conversa, com os nomes reais dos produtos, quantidades e preços do catálogo. NÃO use placeholders como "[Itens e quantidades do pedido a serem listados]" ou "R$ ValorTotal". Calcule os valores reais.\n\n`
     prompt += `Formato obrigatório do resumo (preencha com os dados REAIS):\n\n`
     prompt += `---\n`
-    prompt += `✅ *Pedido Confirmado!*\n\n`
-    prompt += `📋 *Pedido #(número sequencial)*\n\n`
+    prompt += `📋 *Resumo do Pedido*\n\n`
     prompt += `👤 *Cliente:* (nome real do cliente)\n`
     prompt += `📱 *Celular:* (celular real formatado)\n\n`
     prompt += `*Itens:*\n`
@@ -616,8 +804,33 @@ export class OpenAiService {
     prompt += `💰 *Total: R$ (soma real calculada)*\n`
     prompt += `💳 *Reserva (30%): R$ (30% do total real)*\n\n`
     prompt += `📍 *Entrega:* (endereço real do cliente) OU *Retirada no local:* (endereço real da loja)\n\n`
-    prompt += `Efetue o pagamento da reserva e envie o comprovante aqui.\n`
+    prompt += `Posso confirmar este pedido?\n`
     prompt += `---\n\n`
+
+    prompt += `i) Após o cliente CONFIRMAR o resumo, use a função "criar_pedido" para gravar o pedido no sistema. Passe TODOS os dados:\n`
+    prompt += `   - customerId: ID do cliente (obtido na busca/cadastro)\n`
+    prompt += `   - customerName: nome do cliente\n`
+    prompt += `   - customerPhone: celular com DDD\n`
+    prompt += `   - deliveryType: "ENTREGA" ou "RETIRADA"\n`
+    prompt += `   - deliveryAddress: endereço de entrega ou da loja\n`
+    prompt += `   - notes: observações (sabores, decoração, data de entrega, horário, etc)\n`
+    prompt += `   - items: lista com productName (nome EXATO do catálogo), quantity e price (preço unitário)\n\n`
+
+    prompt += `j) Após o pedido ser criado com sucesso, mostre a confirmação com o número do pedido:\n\n`
+    prompt += `---\n`
+    prompt += `✅ *Pedido #(número retornado) Confirmado!*\n\n`
+    prompt += `💰 *Total:* R$ (total)\n`
+    prompt += `💳 *Reserva (30%):* R$ (reserva)\n\n`
+    prompt += `Efetue o pagamento da reserva e envie o comprovante aqui.\n`
+    prompt += `Assim que recebermos, vamos confirmar e iniciar a produção! 🎂\n`
+    prompt += `---\n\n`
+
+    prompt += `### RECEBIMENTO DO COMPROVANTE DE PAGAMENTO\n\n`
+    prompt += `k) Quando o cliente enviar uma IMAGEM ou PDF de comprovante de pagamento (pix, transferência, depósito), use a função "registrar_pagamento" passando o customerPhone.\n`
+    prompt += `   - O sistema vai salvar a imagem do comprovante automaticamente\n`
+    prompt += `   - O pedido será atualizado para status RESERVATION\n`
+    prompt += `   - Informe ao cliente que recebemos o comprovante e que iremos confirmar o pagamento e iniciar a produção\n`
+    prompt += `   - Mensagem sugerida: "Recebemos o comprovante de pagamento do Pedido #(número)! 🎉 Vamos confirmar o pagamento e em breve iniciaremos a produção do seu pedido. Obrigado!"\n\n`
 
     prompt += `IMPORTANTE:\n`
     prompt += `- Quando o cliente escolher uma categoria, responda SOMENTE com [MOSTRAR_PRODUTOS:NomeDaCategoria], sem nenhum texto antes ou depois\n`
@@ -625,6 +838,8 @@ export class OpenAiService {
     prompt += `- SEMPRE busque o cliente na base antes de prosseguir\n`
     prompt += `- SEMPRE verifique o tipo de entrega disponível\n`
     prompt += `- SEMPRE confirme os dados com o cliente antes de cadastrar\n`
+    prompt += `- SEMPRE use a função "criar_pedido" para gravar o pedido após confirmação do cliente\n`
+    prompt += `- SEMPRE use a função "registrar_pagamento" quando o cliente enviar comprovante\n`
     prompt += `- Sempre use os preços exatos do catálogo acima\n`
     prompt += `- Calcule o total corretamente (quantidade x preço de cada item)\n`
     prompt += `- A reserva é sempre 30% do total\n`
@@ -778,6 +993,7 @@ export class OpenAiService {
 
   // Processa mensagem e retorna resposta da OpenAI
   async chat(userId, remoteJid, userMessage, instanceName = null) {
+    this._currentRemoteJid = remoteJid
     const systemPrompt = await this.buildSystemPrompt(userId)
 
     this.addMessage(remoteJid, 'user', userMessage)
@@ -800,6 +1016,9 @@ export class OpenAiService {
 
   // Processa mensagem com imagem (multimodal)
   async chatWithImage(userId, remoteJid, userMessage, imageUrl, instanceName = null) {
+    this._currentRemoteJid = remoteJid
+    // Salva a imagem no cache para uso em registrar_pagamento (comprovante)
+    lastImageCache.set(remoteJid, imageUrl)
     const systemPrompt = await this.buildSystemPrompt(userId)
 
     const content = []

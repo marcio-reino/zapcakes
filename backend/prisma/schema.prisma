@@ -60,7 +60,8 @@ model Customer {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders Order[]
 
   @@map("customers")
 }
@@ -269,23 +270,30 @@ model ComboItem {
 model Order {
   id              Int         @id @default(autoincrement())
   userId          Int         @map("user_id")
+  customerId      Int?        @map("customer_id")
   customerName    String      @map("customer_name")
   customerPhone   String      @map("customer_phone")
+  remoteJid       String?     @map("remote_jid")
   status          OrderStatus @default(PENDING)
   total           Decimal     @db.Decimal(10, 2)
+  reservation     Decimal?    @db.Decimal(10, 2)
+  deliveryType    String?     @map("delivery_type") @db.VarChar(20)
   deliveryAddress String?     @map("delivery_address") @db.Text
+  paymentProof    String?     @map("payment_proof") @db.Text
   notes           String?     @db.Text
   createdAt       DateTime    @default(now()) @map("created_at")
   updatedAt       DateTime    @updatedAt @map("updated_at")
 
-  user  User        @relation(fields: [userId], references: [id])
-  items OrderItem[]
+  user     User        @relation(fields: [userId], references: [id])
+  customer Customer?   @relation(fields: [customerId], references: [id])
+  items    OrderItem[]
 
   @@map("orders")
 }
 
 enum OrderStatus {
   PENDING
+  RESERVATION
   CONFIRMED
   PREPARING
   READY

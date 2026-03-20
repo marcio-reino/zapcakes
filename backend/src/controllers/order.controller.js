@@ -10,7 +10,7 @@ export class OrderController {
       where,
       include: {
         items: { include: { product: true } },
-        user: { select: { id: true, name: true, email: true } },
+        customer: { select: { id: true, name: true, phone: true } },
       },
       orderBy: { createdAt: 'desc' },
     })
@@ -62,7 +62,7 @@ export class OrderController {
       where: { id: Number(id), userId: request.user.id },
       include: {
         items: { include: { product: true } },
-        user: { select: { id: true, name: true, email: true } },
+        customer: { select: { id: true, name: true, phone: true } },
       },
     })
 
