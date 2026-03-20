@@ -6,6 +6,18 @@ import { Readable } from 'stream'
 
 const openAiService = new OpenAiService()
 
+// Envia indicador "digitando..." no WhatsApp
+async function sendTyping(instanceName, remoteJid) {
+  try {
+    await evolutionApi.post(`/chat/sendPresence/${instanceName}`, {
+      number: remoteJid.replace('@s.whatsapp.net', ''),
+      presence: 'composing',
+    })
+  } catch {
+    // Ignora erros de presença
+  }
+}
+
 // Baixa áudio da Evolution API e transcreve com Whisper
 async function transcribeAudio(instanceName, messageId) {
   try {
@@ -131,6 +143,9 @@ export class WebhookController {
             content: textContent,
           },
         })
+
+        // Envia "digitando..." enquanto processa
+        await sendTyping(instanceName, remoteJid)
 
         // Processa com OpenAI e responde
         try {

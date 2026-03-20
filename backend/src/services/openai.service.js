@@ -80,6 +80,18 @@ export class OpenAiService {
     return comboText
   }
 
+  // Envia indicador "digitando..." no WhatsApp
+  async sendTyping(instanceName, remoteJid) {
+    try {
+      await evolutionApi.post(`/chat/sendPresence/${instanceName}`, {
+        number: remoteJid.replace('@s.whatsapp.net', ''),
+        presence: 'composing',
+      })
+    } catch {
+      // Ignora erros de presença
+    }
+  }
+
   // Envia produtos de uma categoria como imagens individuais no WhatsApp
   async sendProductImages(userId, instanceName, remoteJid, categoryName) {
     const number = remoteJid.replace('@s.whatsapp.net', '')
@@ -111,6 +123,8 @@ export class OpenAiService {
       let caption = `*${product.name}*\n${price}`
       if (product.description) caption += `\n\n${product.description}`
 
+      await this.sendTyping(instanceName, remoteJid)
+
       if (product.imageUrl) {
         try {
           await evolutionApi.post(`/message/sendMedia/${instanceName}`, {
@@ -135,6 +149,7 @@ export class OpenAiService {
     }
 
     // Envia mensagem final perguntando a escolha
+    await this.sendTyping(instanceName, remoteJid)
     await evolutionApi.post(`/message/sendText/${instanceName}`, {
       number,
       text: `Esses são os nossos produtos de *${category.name}*! 😊\n\nQual produto você gostaria de pedir e em que quantidade?`,
