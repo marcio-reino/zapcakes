@@ -1,10 +1,11 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import { useTheme } from '../contexts/ThemeContext.jsx'
-import { FiHome, FiGrid, FiPackage, FiLayers, FiCpu, FiShoppingCart, FiLogOut, FiMoon, FiSun } from 'react-icons/fi'
+import { FiHome, FiUsers, FiGrid, FiPackage, FiLayers, FiCpu, FiShoppingCart, FiLogOut, FiMoon, FiSun } from 'react-icons/fi'
 
 const menuItems = [
   { path: '/client', icon: FiHome, label: 'Dashboard' },
+  { path: '/client/customers', icon: FiUsers, label: 'Clientes' },
   { path: '/client/categories', icon: FiGrid, label: 'Categorias' },
   { path: '/client/products', icon: FiPackage, label: 'Produtos' },
   { path: '/client/combos', icon: FiLayers, label: 'Combos' },

@@ -16,6 +16,7 @@ import { comboRoutes } from './routes/combo.routes.js'
 import { uploadRoutes } from './routes/upload.routes.js'
 import { agentInstructionRoutes } from './routes/agent-instruction.routes.js'
 import { evoAgentRoutes } from './routes/evo-agent.routes.js'
+import { customerRoutes } from './routes/customer.routes.js'
 import { ensureBucketPublicRead } from './config/s3.js'
 
 const app = Fastify({ logger: true })
@@ -54,6 +55,7 @@ await app.register(webhookRoutes, { prefix: '/api/webhooks' })
 await app.register(uploadRoutes, { prefix: '/api/uploads' })
 await app.register(agentInstructionRoutes, { prefix: '/api/agent-instructions' })
 await app.register(evoAgentRoutes, { prefix: '/api/evo-agent' })
+await app.register(customerRoutes, { prefix: '/api/customers' })
 
 // Health check
 app.get('/api/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }))

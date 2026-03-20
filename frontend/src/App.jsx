@@ -27,6 +27,7 @@ import Categories from './pages/admin/Categories.jsx'
 import Products from './pages/admin/Products.jsx'
 import Combos from './pages/admin/Combos.jsx'
 import Agent from './pages/admin/Agent.jsx'
+import Customers from './pages/client/Customers.jsx'
 
 function PrivateRoute({ children, adminOnly = false }) {
   const { user, loading } = useAuth()
@@ -64,6 +65,7 @@ export default function App() {
       {/* Client Routes */}
       <Route path="/client" element={<PrivateRoute><ClientLayout /></PrivateRoute>}>
         <Route index element={<ClientDashboard />} />
+        <Route path="customers" element={<Customers />} />
         <Route path="categories" element={<Categories />} />
         <Route path="products" element={<Products />} />
         <Route path="combos" element={<Combos />} />

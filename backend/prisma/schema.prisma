@@ -34,8 +34,34 @@ model User {
   combos            Combo[]
   account           Account?
   agentInstructions AgentInstruction[]
+  customers         Customer[]
 
   @@map("users")
+}
+
+// Clientes compradores (gerenciados pelo dono da fábrica)
+model Customer {
+  id           Int      @id @default(autoincrement())
+  userId       Int      @map("user_id")
+  name         String
+  phone        String?
+  email        String?
+  notes        String?  @db.Text
+  street       String?
+  number       String?
+  complement   String?
+  neighborhood String?
+  city         String?
+  state        String?  @db.VarChar(2)
+  zipCode      String?  @map("zip_code")
+  reference    String?  @db.VarChar(200)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("customers")
 }
 
 enum Role {

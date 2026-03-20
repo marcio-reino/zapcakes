@@ -1,0 +1,69 @@
+import prisma from '../config/database.js'
+
+export class CustomerController {
+  async list(request, reply) {
+    const customers = await prisma.customer.findMany({
+      where: { userId: request.user.id },
+      orderBy: { name: 'asc' },
+    })
+    return customers
+  }
+
+  async getById(request, reply) {
+    const customer = await prisma.customer.findFirst({
+      where: { id: Number(request.params.id), userId: request.user.id },
+    })
+    if (!customer) {
+      return reply.status(404).send({ error: 'Cliente não encontrado' })
+    }
+    return customer
+  }
+
+  async create(request, reply) {
+    const { name, phone, email, notes, street, number, complement, neighborhood, city, state, zipCode, reference } = request.body
+
+    if (!name) {
+      return reply.status(400).send({ error: 'Nome é obrigatório' })
+    }
+
+    const customer = await prisma.customer.create({
+      data: {
+        userId: request.user.id,
+        name, phone, email, notes,
+        street, number, complement, neighborhood, city, state, zipCode, reference,
+      },
+    })
+
+    return reply.status(201).send(customer)
+  }
+
+  async update(request, reply) {
+    const customer = await prisma.customer.findFirst({
+      where: { id: Number(request.params.id), userId: request.user.id },
+    })
+    if (!customer) {
+      return reply.status(404).send({ error: 'Cliente não encontrado' })
+    }
+
+    const { name, phone, email, notes, street, number, complement, neighborhood, city, state, zipCode, reference, active } = request.body
+
+    const updated = await prisma.customer.update({
+      where: { id: customer.id },
+      data: { name, phone, email, notes, street, number, complement, neighborhood, city, state, zipCode, reference, active },
+    })
+
+    return updated
+  }
+
+  async delete(request, reply) {
+    const customer = await prisma.customer.findFirst({
+      where: { id: Number(request.params.id), userId: request.user.id },
+    })
+    if (!customer) {
+      return reply.status(404).send({ error: 'Cliente não encontrado' })
+    }
+
+    await prisma.customer.delete({ where: { id: customer.id } })
+    return { message: 'Cliente removido com sucesso' }
+  }
+}
