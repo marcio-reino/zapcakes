@@ -33,11 +33,20 @@ async function getMediaBase64(instanceName, messageId) {
   }
 }
 
+// Limite de tamanho: texto (1000 caracteres) e áudio (2MB base64 ≈ ~2min)
+const MAX_TEXT_LENGTH = 1000
+const MAX_AUDIO_BASE64_SIZE = 2 * 1024 * 1024 // 2MB em base64
+
 // Baixa áudio da Evolution API e transcreve com Whisper
 async function transcribeAudio(instanceName, messageId) {
   try {
     const base64 = await getMediaBase64(instanceName, messageId)
     if (!base64) return null
+
+    // Verifica se o áudio é muito grande
+    if (base64.length > MAX_AUDIO_BASE64_SIZE) {
+      return '__AUDIO_TOO_LONG__'
+    }
 
     const buffer = Buffer.from(base64, 'base64')
     const file = new File([buffer], 'audio.ogg', { type: 'audio/ogg' })
@@ -157,6 +166,39 @@ export class WebhookController {
           textContent = `[Localização recebida: ${message.message.locationMessage.degreesLatitude}, ${message.message.locationMessage.degreesLongitude}]`
         } else {
           textContent = '[Mensagem não suportada]'
+        }
+
+        // Verifica se texto ou áudio é muito grande - não envia para a IA
+        const tooLong = textContent === '__AUDIO_TOO_LONG__' || (!imageUrl && textContent.length > MAX_TEXT_LENGTH)
+        if (tooLong) {
+          const rejectMsg = 'Por favor, envie sua mensagem de forma mais curta e objetiva. 😊 Mensagens muito longas não conseguimos processar. Tente resumir sua solicitação!'
+
+          await prisma.message.create({
+            data: {
+              instanceId: instance.id,
+              remoteJid,
+              fromMe: false,
+              messageType: message.messageType || 'text',
+              content: textContent === '__AUDIO_TOO_LONG__' ? '[Áudio muito longo]' : textContent.substring(0, 200) + '...',
+            },
+          })
+
+          await evolutionApi.post(`/message/sendText/${instanceName}`, {
+            number: remoteJid.replace('@s.whatsapp.net', ''),
+            text: rejectMsg,
+          })
+
+          await prisma.message.create({
+            data: {
+              instanceId: instance.id,
+              remoteJid,
+              fromMe: true,
+              messageType: 'text',
+              content: rejectMsg,
+            },
+          })
+
+          return { received: true }
         }
 
         // Salva mensagem recebida no log
