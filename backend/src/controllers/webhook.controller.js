@@ -18,17 +18,28 @@ async function sendTyping(instanceName, remoteJid) {
   }
 }
 
+// Baixa mídia da Evolution API e retorna base64
+async function getMediaBase64(instanceName, messageId) {
+  try {
+    // Usa POST pois alguns servidores não suportam body em GET
+    const { data } = await evolutionApi.post(
+      `/chat/getBase64FromMediaMessage/${instanceName}`,
+      { message: { key: { id: messageId } } }
+    )
+    return data?.base64 || null
+  } catch (err) {
+    console.error('Erro ao baixar mídia:', err.message)
+    return null
+  }
+}
+
 // Baixa áudio da Evolution API e transcreve com Whisper
 async function transcribeAudio(instanceName, messageId) {
   try {
-    const { data } = await evolutionApi.get(
-      `/chat/getBase64FromMediaMessage/${instanceName}`,
-      { data: { message: { key: { id: messageId } } } }
-    )
+    const base64 = await getMediaBase64(instanceName, messageId)
+    if (!base64) return null
 
-    if (!data?.base64) return null
-
-    const buffer = Buffer.from(data.base64, 'base64')
+    const buffer = Buffer.from(base64, 'base64')
     const file = new File([buffer], 'audio.ogg', { type: 'audio/ogg' })
 
     const transcription = await openai.audio.transcriptions.create({
@@ -40,6 +51,19 @@ async function transcribeAudio(instanceName, messageId) {
     return transcription.text
   } catch (err) {
     console.error('Erro ao transcrever áudio:', err.message)
+    return null
+  }
+}
+
+// Baixa imagem da Evolution API e retorna data URL para o GPT-4o
+async function getImageDataUrl(instanceName, messageId) {
+  try {
+    const base64 = await getMediaBase64(instanceName, messageId)
+    if (!base64) return null
+
+    return `data:image/jpeg;base64,${base64}`
+  } catch (err) {
+    console.error('Erro ao baixar imagem:', err.message)
     return null
   }
 }
@@ -109,9 +133,11 @@ export class WebhookController {
         } else if (message.message?.extendedTextMessage?.text) {
           textContent = message.message.extendedTextMessage.text
         } else if (message.message?.imageMessage) {
-          textContent = message.message.imageMessage.caption || 'Imagem recebida'
-          if (message.message.imageMessage.url) {
-            imageUrl = message.message.imageMessage.url
+          textContent = message.message.imageMessage.caption || 'O cliente enviou uma imagem. Descreva o que você vê.'
+          // Baixa a imagem via Evolution API e converte para data URL acessível pelo GPT-4o
+          const imgDataUrl = await getImageDataUrl(instanceName, message.key.id)
+          if (imgDataUrl) {
+            imageUrl = imgDataUrl
           }
         } else if (message.message?.audioMessage) {
           // Transcreve áudio com Whisper
