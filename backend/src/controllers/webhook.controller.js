@@ -137,9 +137,14 @@ export class WebhookController {
           let aiReply
 
           if (imageUrl) {
-            aiReply = await openAiService.chatWithImage(instance.userId, remoteJid, textContent, imageUrl)
+            aiReply = await openAiService.chatWithImage(instance.userId, remoteJid, textContent, imageUrl, instanceName)
           } else {
-            aiReply = await openAiService.chat(instance.userId, remoteJid, textContent)
+            aiReply = await openAiService.chat(instance.userId, remoteJid, textContent, instanceName)
+          }
+
+          // Se retornou null, as imagens dos produtos já foram enviadas diretamente
+          if (aiReply === null) {
+            return { received: true }
           }
 
           // Envia resposta via Evolution API
