@@ -18,7 +18,7 @@ export default function Customers() {
   const [activeTab, setActiveTab] = useState('dados')
   const [loadingCep, setLoadingCep] = useState(false)
   const [form, setForm] = useState({
-    name: '', phone: '', email: '', notes: '',
+    name: '', phone: '', email: '', password: '', notes: '',
     street: '', number: '', complement: '', neighborhood: '', city: '', state: '', zipCode: '', reference: '',
   })
 
@@ -45,7 +45,7 @@ export default function Customers() {
   function startEdit(customer) {
     setEditingId(customer.id)
     setForm({
-      name: customer.name || '', phone: customer.phone || '', email: customer.email || '', notes: customer.notes || '',
+      name: customer.name || '', phone: customer.phone || '', email: customer.email || '', password: '', notes: customer.notes || '',
       street: customer.street || '', number: customer.number || '', complement: customer.complement || '',
       neighborhood: customer.neighborhood || '', city: customer.city || '', state: customer.state || '',
       zipCode: customer.zipCode || '', reference: customer.reference || '',
@@ -63,11 +63,13 @@ export default function Customers() {
     e.preventDefault()
     setSaving(true)
     try {
+      const payload = { ...form }
+      if (!payload.password) delete payload.password
       if (editingId) {
-        await api.put(`/customers/${editingId}`, form)
+        await api.put(`/customers/${editingId}`, payload)
         toast.success('Cliente atualizado!')
       } else {
-        await api.post('/customers', form)
+        await api.post('/customers', payload)
         toast.success('Cliente cadastrado!')
       }
       closeModal()
@@ -128,6 +130,12 @@ export default function Customers() {
     } finally {
       setLoadingCep(false)
     }
+  }
+
+  function formatCep(value) {
+    const digits = value.replace(/\D/g, '').slice(0, 8)
+    if (digits.length <= 5) return digits
+    return `${digits.slice(0, 5)}-${digits.slice(5)}`
   }
 
   function formatPhone(value) {
@@ -232,6 +240,7 @@ export default function Customers() {
         onClose={closeModal}
         title={editingId ? 'Editar Cliente' : 'Novo Cliente'}
         maxWidth="max-w-lg"
+        maxHeight="650px"
         footer={
           <div className="flex justify-end gap-3">
             <button onClick={closeModal} className="px-4 py-2.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
@@ -255,9 +264,15 @@ export default function Customers() {
                 <label className={labelClass}>Nome *</label>
                 <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputClass} placeholder="Nome do cliente" required />
               </div>
-              <div>
-                <label className={labelClass}>Celular</label>
-                <input type="text" value={form.phone} onChange={(e) => setForm({ ...form, phone: formatPhone(e.target.value) })} className={inputClass} placeholder="(00) 00000-0000" maxLength={15} />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={labelClass}>Celular</label>
+                  <input type="text" value={form.phone} onChange={(e) => setForm({ ...form, phone: formatPhone(e.target.value) })} className={inputClass} placeholder="(00) 00000-0000" maxLength={15} />
+                </div>
+                <div>
+                  <label className={labelClass}>Senha</label>
+                  <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className={inputClass} placeholder={editingId ? 'Deixe vazio para manter' : 'Mínimo 6 caracteres'} minLength={editingId ? 0 : 6} {...(!editingId && { required: true })} />
+                </div>
               </div>
               <div>
                 <label className={labelClass}>Email</label>
@@ -275,7 +290,7 @@ export default function Customers() {
               <div>
                 <label className={labelClass}>CEP</label>
                 <div className="flex gap-2">
-                  <input type="text" value={form.zipCode} onChange={(e) => setForm({ ...form, zipCode: e.target.value })} className={inputClass} placeholder="00000-000" maxLength={9} />
+                  <input type="text" value={form.zipCode} onChange={(e) => setForm({ ...form, zipCode: formatCep(e.target.value) })} className={inputClass} placeholder="00000-000" maxLength={9} />
                   <button type="button" onClick={searchCep} disabled={loadingCep} className="px-4 py-2.5 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors flex items-center gap-1.5 whitespace-nowrap disabled:opacity-50">
                     <FiSearch size={16} /> {loadingCep ? 'Buscando...' : 'Buscar'}
                   </button>

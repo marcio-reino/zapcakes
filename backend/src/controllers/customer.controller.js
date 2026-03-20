@@ -1,4 +1,5 @@
 import prisma from '../config/database.js'
+import bcrypt from 'bcryptjs'
 
 export class CustomerController {
   async list(request, reply) {
@@ -20,20 +21,23 @@ export class CustomerController {
   }
 
   async create(request, reply) {
-    const { name, phone, email, notes, street, number, complement, neighborhood, city, state, zipCode, reference } = request.body
+    const { name, phone, email, password, notes, street, number, complement, neighborhood, city, state, zipCode, reference } = request.body
 
     if (!name) {
       return reply.status(400).send({ error: 'Nome é obrigatório' })
     }
 
-    const customer = await prisma.customer.create({
-      data: {
-        userId: request.user.id,
-        name, phone, email, notes,
-        street, number, complement, neighborhood, city, state, zipCode, reference,
-      },
-    })
+    const data = {
+      userId: request.user.id,
+      name, phone, email, notes,
+      street, number, complement, neighborhood, city, state, zipCode, reference,
+    }
 
+    if (password) {
+      data.password = await bcrypt.hash(password, 10)
+    }
+
+    const customer = await prisma.customer.create({ data })
     return reply.status(201).send(customer)
   }
 
@@ -45,11 +49,17 @@ export class CustomerController {
       return reply.status(404).send({ error: 'Cliente não encontrado' })
     }
 
-    const { name, phone, email, notes, street, number, complement, neighborhood, city, state, zipCode, reference, active } = request.body
+    const { name, phone, email, password, notes, street, number, complement, neighborhood, city, state, zipCode, reference, active } = request.body
+
+    const data = { name, phone, email, notes, street, number, complement, neighborhood, city, state, zipCode, reference, active }
+
+    if (password) {
+      data.password = await bcrypt.hash(password, 10)
+    }
 
     const updated = await prisma.customer.update({
       where: { id: customer.id },
-      data: { name, phone, email, notes, street, number, complement, neighborhood, city, state, zipCode, reference, active },
+      data,
     })
 
     return updated

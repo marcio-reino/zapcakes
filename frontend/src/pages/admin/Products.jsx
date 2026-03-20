@@ -241,7 +241,7 @@ export default function AdminProducts() {
                 </td>
                 <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">{p.name}</td>
                 <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{p.category?.name}</td>
-                <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">R$ {Number(p.price).toFixed(2)}</td>
+                <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">{Number(p.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                 <td className="px-6 py-4">
                   <span className={`px-2 py-1 text-xs rounded-full ${p.active ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'}`}>
                     {p.active ? 'Ativo' : 'Inativo'}
