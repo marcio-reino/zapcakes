@@ -54,7 +54,9 @@ export class AuthController {
       const code = generateCode()
       const expiresAt = Date.now() + 10 * 60 * 1000
       activationCodes.set(user.email, { userId: user.id, code, expiresAt, name: user.name })
-      await sendActivationEmail(user.name, user.email, code)
+      sendActivationEmail(user.name, user.email, code).catch(err => {
+        console.error('Erro ao enviar e-mail de ativação:', err.message)
+      })
       return reply.status(403).send({ error: 'Conta não ativada', pendingActivation: true, email: user.email })
     }
 
@@ -90,7 +92,10 @@ export class AuthController {
     const expiresAt = Date.now() + 10 * 60 * 1000 // 10 minutos
     activationCodes.set(email, { userId: user.id, code, expiresAt, name })
 
-    await sendActivationEmail(name, email, code)
+    // Envia e-mail sem bloquear o registro
+    sendActivationEmail(name, email, code).catch(err => {
+      console.error('Erro ao enviar e-mail de ativação:', err.message)
+    })
 
     return reply.status(201).send({ pendingActivation: true, email })
   }
@@ -146,7 +151,9 @@ export class AuthController {
     const expiresAt = Date.now() + 10 * 60 * 1000
     activationCodes.set(email, { userId: user.id, code, expiresAt, name: user.name })
 
-    await sendActivationEmail(user.name, email, code)
+    sendActivationEmail(user.name, email, code).catch(err => {
+      console.error('Erro ao reenviar e-mail de ativação:', err.message)
+    })
 
     return { success: true }
   }
