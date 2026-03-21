@@ -5,7 +5,7 @@ import AdminLayout from './layouts/AdminLayout.jsx'
 import ClientLayout from './layouts/ClientLayout.jsx'
 
 import LoginPage from './pages/LoginPage.jsx'
-import RegisterPage from './pages/RegisterPage.jsx'
+import ResetPasswordPage from './pages/ResetPasswordPage.jsx'
 
 // Admin pages
 import AdminDashboard from './pages/admin/Dashboard.jsx'
@@ -21,6 +21,7 @@ import ClientDashboard from './pages/client/Dashboard.jsx'
 import ClientInstances from './pages/client/Instances.jsx'
 import ClientChatbot from './pages/client/Chatbot.jsx'
 import ClientOrders from './pages/client/Orders.jsx'
+import ClientCompany from './pages/client/Company.jsx'
 
 // Shared pages (used by both admin and client)
 import Categories from './pages/admin/Categories.jsx'
@@ -49,7 +50,8 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/register" element={<Navigate to="/login" />} />
 
       {/* Admin Routes */}
       <Route path="/admin" element={<PrivateRoute adminOnly><AdminLayout /></PrivateRoute>}>
@@ -65,6 +67,7 @@ export default function App() {
       {/* Client Routes */}
       <Route path="/client" element={<PrivateRoute><ClientLayout /></PrivateRoute>}>
         <Route index element={<ClientDashboard />} />
+        <Route path="company" element={<ClientCompany />} />
         <Route path="customers" element={<Customers />} />
         <Route path="categories" element={<Categories />} />
         <Route path="products" element={<Products />} />

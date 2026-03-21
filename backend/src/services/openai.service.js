@@ -101,7 +101,8 @@ const agentTools = [
           deliveryFee: { type: 'number', description: 'Taxa de entrega em reais (0 se retirada ou sem taxa)' },
           neighborhood: { type: 'string', description: 'Bairro do cliente (para cálculo de taxa de entrega)' },
           city: { type: 'string', description: 'Cidade do cliente (para cálculo de taxa de entrega)' },
-          notes: { type: 'string', description: 'Observações do pedido (sabores, decoração, data de entrega, etc)' },
+          notes: { type: 'string', description: 'Observações do pedido (sabores, decoração, etc)' },
+          estimatedDeliveryDate: { type: 'string', description: 'Data e horário previsto para entrega/retirada informado pelo cliente (ex: 25/03/2026 às 14h, Sábado dia 22, etc)' },
           items: {
             type: 'array',
             description: 'Lista de itens do pedido',
@@ -123,12 +124,40 @@ const agentTools = [
   {
     type: 'function',
     function: {
+      name: 'consultar_pedido',
+      description: 'Consulta dados de um pedido pelo número do pedido ou pelo telefone do cliente. Use quando o cliente perguntar sobre status, valor, reserva ou qualquer informação do pedido.',
+      parameters: {
+        type: 'object',
+        properties: {
+          orderId: { type: 'number', description: 'Número do pedido (ex: 123)' },
+          customerPhone: { type: 'string', description: 'Celular do cliente com DDD, apenas números (ex: 22998524209)' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'consultar_agenda',
+      description: 'Consulta as datas disponíveis na agenda do estabelecimento para entrega/retirada. Use ANTES de perguntar a data ao cliente, para informar quais dias estão disponíveis e com vagas.',
+      parameters: {
+        type: 'object',
+        properties: {},
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'registrar_pagamento',
-      description: 'Registra que o cliente enviou comprovante de pagamento da reserva. Use quando o cliente enviar foto/imagem do comprovante de pagamento.',
+      description: 'Registra que o cliente enviou comprovante de pagamento da reserva. Use quando o cliente enviar foto/imagem do comprovante de pagamento. Informe o valor identificado no comprovante para validação.',
       parameters: {
         type: 'object',
         properties: {
           customerPhone: { type: 'string', description: 'Celular do cliente com DDD para localizar o pedido' },
+          proofAmount: { type: 'number', description: 'Valor em reais identificado no comprovante de pagamento (ex: 33.00). Analise a imagem do comprovante e extraia o valor da transação.' },
         },
         required: ['customerPhone'],
       },
@@ -401,7 +430,7 @@ export class OpenAiService {
           caption: instruction.title,
           fileName: `${instruction.title}.pdf`,
         })
-      } else if (url.match(/\.(mp3|mpeg)(\?|$)/)) {
+      } else if (url.match(/\.(mp3|mpeg|ogg)(\?|$)/)) {
         await evolutionApi.post(`/message/sendMedia/${instanceName}`, {
           number,
           mediatype: 'audio',
@@ -550,6 +579,25 @@ export class OpenAiService {
 
       case 'criar_pedido': {
         try {
+          // Verifica disponibilidade na agenda antes de criar o pedido
+          if (args.estimatedDeliveryDate) {
+            const parsedDate = this._parseDeliveryDate(args.estimatedDeliveryDate)
+            if (parsedDate) {
+              const hasAnySlot = await prisma.agendaSlot.count({ where: { userId } })
+              if (hasAnySlot > 0) {
+                const slot = await prisma.agendaSlot.findUnique({
+                  where: { userId_date: { userId, date: parsedDate } },
+                })
+                if (!slot || !slot.active) {
+                  return JSON.stringify({ success: false, error: `Não há disponibilidade na agenda para a data ${args.estimatedDeliveryDate}. Peça ao cliente para escolher outra data. Use consultar_agenda para ver as datas disponíveis.` })
+                }
+                if (slot.currentOrders >= slot.maxOrders) {
+                  return JSON.stringify({ success: false, error: `A agenda para ${args.estimatedDeliveryDate} está lotada (${slot.maxOrders}/${slot.maxOrders} pedidos). Peça ao cliente para escolher outra data. Use consultar_agenda para ver as datas disponíveis.` })
+                }
+              }
+            }
+          }
+
           const itemsTotal = args.items.reduce((sum, item) => sum + item.quantity * item.price, 0)
 
           // Busca instruções de pedidos para reserva e taxa de entrega
@@ -600,6 +648,7 @@ export class OpenAiService {
               deliveryType: args.deliveryType,
               deliveryAddress: args.deliveryAddress,
               deliveryFee: deliveryFee || null,
+              estimatedDeliveryDate: args.estimatedDeliveryDate || null,
               notes: args.notes || null,
               total,
               reservation,
@@ -610,6 +659,17 @@ export class OpenAiService {
             },
             include: { items: { include: { product: true } } },
           })
+
+          // Incrementa contador na agenda se a data prevista existe
+          if (args.estimatedDeliveryDate) {
+            const parsedDate = this._parseDeliveryDate(args.estimatedDeliveryDate)
+            if (parsedDate) {
+              await prisma.agendaSlot.updateMany({
+                where: { userId, date: parsedDate, active: true },
+                data: { currentOrders: { increment: 1 } },
+              })
+            }
+          }
 
           let message = `Pedido #${order.id} criado com sucesso! Subtotal: R$ ${itemsTotal.toFixed(2)}.`
           if (deliveryFee > 0) message += ` Taxa de entrega: R$ ${deliveryFee.toFixed(2)}.`
@@ -637,6 +697,123 @@ export class OpenAiService {
         } catch (err) {
           console.error('Erro ao criar pedido:', err.message)
           return JSON.stringify({ success: false, error: 'Erro ao criar pedido. Tente novamente.' })
+        }
+      }
+
+      case 'consultar_pedido': {
+        try {
+          let order = null
+          if (args.orderId) {
+            order = await prisma.order.findFirst({
+              where: { id: args.orderId, userId },
+              include: { items: { include: { product: true } } },
+            })
+          } else if (args.customerPhone) {
+            const phone = args.customerPhone.replace(/\D/g, '')
+            order = await prisma.order.findFirst({
+              where: { userId, customerPhone: { contains: phone } },
+              orderBy: { createdAt: 'desc' },
+              include: { items: { include: { product: true } } },
+            })
+          }
+
+          if (!order) {
+            return JSON.stringify({ found: false, message: 'Pedido não encontrado.' })
+          }
+
+          const statusLabels = {
+            PENDING: 'Pendente',
+            RESERVATION: 'Reserva (aguardando verificação)',
+            CONFIRMED: 'Confirmado',
+            PREPARING: 'Preparando',
+            READY: 'Pronto para retirada/entrega',
+            DELIVERED: 'Entregue',
+            CANCELLED: 'Cancelado',
+          }
+
+          const items = order.items.map(i =>
+            `${i.quantity}x ${i.product.name} - R$ ${(i.quantity * Number(i.price)).toFixed(2)}`
+          )
+
+          return JSON.stringify({
+            found: true,
+            orderId: order.id,
+            status: statusLabels[order.status] || order.status,
+            customerName: order.customerName,
+            customerPhone: order.customerPhone,
+            total: Number(order.total).toFixed(2),
+            reservation: order.reservation ? Number(order.reservation).toFixed(2) : null,
+            deliveryFee: order.deliveryFee ? Number(order.deliveryFee).toFixed(2) : null,
+            deliveryType: order.deliveryType === 'ENTREGA' ? 'Entrega' : 'Retirada',
+            deliveryAddress: order.deliveryAddress || null,
+            proofVerified: order.proofVerified,
+            paymentConfirmed: order.paymentConfirmed,
+            items,
+            notes: order.notes || null,
+            estimatedDeliveryDate: order.estimatedDeliveryDate || null,
+            createdAt: new Date(order.createdAt).toLocaleString('pt-BR'),
+          })
+        } catch (err) {
+          console.error('Erro ao consultar pedido:', err.message)
+          return JSON.stringify({ found: false, message: 'Erro ao consultar pedido.' })
+        }
+      }
+
+      case 'consultar_agenda': {
+        try {
+          const today = new Date()
+          today.setUTCHours(0, 0, 0, 0)
+          const endDate = new Date(today)
+          endDate.setDate(endDate.getDate() + 60)
+
+          // Verifica se o operador tem algum slot configurado
+          const totalSlots = await prisma.agendaSlot.count({ where: { userId } })
+          if (totalSlots === 0) {
+            return JSON.stringify({
+              agendaConfigured: false,
+              available: true,
+              message: 'O estabelecimento ainda não configurou a agenda de disponibilidade. Qualquer data pode ser aceita.',
+            })
+          }
+
+          const slots = await prisma.agendaSlot.findMany({
+            where: {
+              userId,
+              active: true,
+              date: { gte: today, lte: endDate },
+            },
+            orderBy: { date: 'asc' },
+          })
+
+          const available = slots.filter(s => s.currentOrders < s.maxOrders)
+
+          if (available.length === 0) {
+            return JSON.stringify({
+              agendaConfigured: true,
+              available: false,
+              message: 'Não há datas disponíveis na agenda no momento. Informe ao cliente que todas as datas estão lotadas e peça para entrar em contato diretamente com o estabelecimento.',
+            })
+          }
+
+          const WEEKDAYS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
+          const dates = available.map(s => {
+            const d = new Date(s.date)
+            const day = String(d.getUTCDate()).padStart(2, '0')
+            const month = String(d.getUTCMonth() + 1).padStart(2, '0')
+            const weekday = WEEKDAYS[d.getUTCDay()]
+            const remaining = s.maxOrders - s.currentOrders
+            return `${day}/${month} (${weekday}) - ${remaining} vaga${remaining > 1 ? 's' : ''}`
+          })
+
+          return JSON.stringify({
+            agendaConfigured: true,
+            available: true,
+            dates,
+            message: `Datas disponíveis para entrega/retirada:\n${dates.join('\n')}`,
+          })
+        } catch (err) {
+          console.error('Erro ao consultar agenda:', err.message)
+          return JSON.stringify({ available: true, message: 'Erro ao consultar agenda. Aceite qualquer data.' })
         }
       }
 
@@ -692,11 +869,32 @@ export class OpenAiService {
             lastImageCache.delete(this._currentRemoteJid)
           }
 
+          // Verifica divergência de valor do comprovante
+          const expectedAmount = order.reservation ? Number(order.reservation) : Number(order.total)
+          const proofAmount = args.proofAmount || null
+          let valueDivergent = false
+          let divergenceMessage = ''
+
+          if (proofAmount !== null && expectedAmount > 0) {
+            // Considera divergente se o valor do comprovante for diferente do esperado
+            const diff = Math.abs(proofAmount - expectedAmount)
+            if (diff > 0.50) { // tolerância de R$ 0,50
+              valueDivergent = true
+              if (proofAmount > expectedAmount) {
+                divergenceMessage = `Parece que seu comprovante de pagamento tem o valor diferente do esperado (R$ ${expectedAmount.toFixed(2)}), mas fique tranquilo, nossa equipe irá verificar e responder.`
+              } else {
+                divergenceMessage = `O valor do comprovante (R$ ${proofAmount.toFixed(2)}) parece diferente do valor esperado (R$ ${expectedAmount.toFixed(2)}). Fique tranquilo, nossa equipe irá verificar e responder.`
+              }
+            }
+          }
+
           await prisma.order.update({
             where: { id: order.id },
             data: {
               status: 'RESERVATION',
               ...(paymentProofUrl ? { paymentProof: paymentProofUrl } : {}),
+              ...(proofAmount !== null ? { depositAmount: proofAmount } : {}),
+              ...(valueDivergent ? { depositDivergence: true } : {}),
             },
           })
 
@@ -704,15 +902,23 @@ export class OpenAiService {
             `${i.quantity}x ${i.product.name} - R$ ${(i.quantity * Number(i.price)).toFixed(2)}`
           ).join(', ')
 
-          return JSON.stringify({
+          const result = {
             success: true,
             orderId: order.id,
             total: Number(order.total).toFixed(2),
-            reservation: Number(order.reservation).toFixed(2),
+            reservation: order.reservation ? Number(order.reservation).toFixed(2) : null,
             items: itemsList,
             proofSaved: !!paymentProofUrl,
-            message: `Pagamento da reserva registrado para o Pedido #${order.id}. ${paymentProofUrl ? 'Comprovante salvo.' : ''} Vamos confirmar o pagamento e iniciar a produção.`,
-          })
+            valueDivergent,
+          }
+
+          if (valueDivergent) {
+            result.message = divergenceMessage
+          } else {
+            result.message = `Pagamento da reserva registrado para o Pedido #${order.id}. ${paymentProofUrl ? 'Comprovante salvo.' : ''} Vamos confirmar o pagamento e iniciar a produção.`
+          }
+
+          return JSON.stringify(result)
         } catch (err) {
           console.error('Erro ao registrar pagamento:', err.message)
           return JSON.stringify({ success: false, error: 'Erro ao registrar pagamento. Tente novamente.' })
@@ -761,7 +967,7 @@ export class OpenAiService {
           const url = inst.imageUrl.toLowerCase()
           let tipo = 'imagem'
           if (url.match(/\.pdf(\?|$)/)) tipo = 'PDF'
-          else if (url.match(/\.(mp3|mpeg)(\?|$)/)) tipo = 'áudio'
+          else if (url.match(/\.(mp3|mpeg|ogg)(\?|$)/)) tipo = 'áudio'
           prompt += `📎 Anexo disponível (${tipo}): Para enviar este anexo ao cliente, responda com [ENVIAR_ANEXO:${inst.id}]\n`
           attachments.push({ id: inst.id, url: inst.imageUrl, tipo, titulo: inst.title })
         }
@@ -848,8 +1054,18 @@ export class OpenAiService {
 
     prompt += '\n'
 
+    prompt += `### DATA PREVISTA PARA ENTREGA\n\n`
+    prompt += `h) ANTES de perguntar a data ao cliente, OBRIGATORIAMENTE use a função "consultar_agenda" para verificar as datas disponíveis.\n`
+    prompt += `   - Se a agenda NÃO estiver configurada (agendaConfigured=false): aceite qualquer data que o cliente informar\n`
+    prompt += `   - Se a agenda estiver configurada E houver datas disponíveis: apresente as datas disponíveis ao cliente e peça para ele escolher uma\n`
+    prompt += `   - Se a agenda estiver configurada mas TODAS as datas estiverem lotadas: informe ao cliente que não há datas disponíveis no momento e peça para entrar em contato diretamente\n`
+    prompt += `   - Se o cliente pedir uma data que NÃO está na agenda ou está lotada: informe que aquela data não está disponível e mostre as alternativas\n`
+    prompt += `   - O cliente pode responder com data e horário (ex: "Sábado dia 22 às 14h", "25/03 às 10h")\n`
+    prompt += `   - Salve essa informação no campo "estimatedDeliveryDate" ao criar o pedido (formato: dd/mm/yyyy seguido do horário se informado)\n`
+    prompt += `   - Inclua a data prevista no resumo do pedido\n\n`
+
     prompt += `### CONFIRMAÇÃO E CRIAÇÃO DO PEDIDO\n\n`
-    prompt += `h) Apresente o resumo completo do pedido ANTES de criar. ATENÇÃO: você DEVE listar TODOS os itens que o cliente pediu durante a conversa, com os nomes reais dos produtos, quantidades e preços do catálogo. NÃO use placeholders como "[Itens e quantidades do pedido a serem listados]" ou "R$ ValorTotal". Calcule os valores reais.\n\n`
+    prompt += `i) Apresente o resumo completo do pedido ANTES de criar. ATENÇÃO: você DEVE listar TODOS os itens que o cliente pediu durante a conversa, com os nomes reais dos produtos, quantidades e preços do catálogo. NÃO use placeholders como "[Itens e quantidades do pedido a serem listados]" ou "R$ ValorTotal". Calcule os valores reais.\n\n`
     prompt += `Formato obrigatório do resumo (preencha com os dados REAIS):\n\n`
     prompt += `---\n`
     prompt += `📋 *Resumo do Pedido*\n\n`
@@ -867,20 +1083,22 @@ export class OpenAiService {
     if (hasReservation) {
       prompt += `💳 *Reserva (${reservationPercent}%): R$ (${reservationPercent}% do subtotal)*\n`
     }
-    prompt += `\n📍 *Entrega:* (endereço real do cliente) OU *Retirada no local:* (endereço real da loja)\n\n`
+    prompt += `\n📍 *Entrega:* (endereço real do cliente) OU *Retirada no local:* (endereço real da loja)\n`
+    prompt += `📅 *Previsão de entrega:* (data e horário informado pelo cliente)\n\n`
     prompt += `Posso confirmar este pedido?\n`
     prompt += `---\n\n`
 
-    prompt += `i) Após o cliente CONFIRMAR o resumo, use a função "criar_pedido" para gravar o pedido no sistema. Passe TODOS os dados:\n`
+    prompt += `j) Após o cliente CONFIRMAR o resumo, use a função "criar_pedido" para gravar o pedido no sistema. Passe TODOS os dados:\n`
     prompt += `   - customerId: ID do cliente (obtido na busca/cadastro)\n`
     prompt += `   - customerName: nome do cliente\n`
     prompt += `   - customerPhone: celular com DDD\n`
     prompt += `   - deliveryType: "ENTREGA" ou "RETIRADA"\n`
     prompt += `   - deliveryAddress: endereço de entrega ou da loja\n`
-    prompt += `   - notes: observações (sabores, decoração, data de entrega, horário, etc)\n`
+    prompt += `   - estimatedDeliveryDate: data e horário previsto para entrega informado pelo cliente\n`
+    prompt += `   - notes: observações (sabores, decoração, etc)\n`
     prompt += `   - items: lista com productName (nome EXATO do catálogo), quantity e price (preço unitário)\n\n`
 
-    prompt += `j) Após o pedido ser criado com sucesso, mostre a confirmação com o número do pedido:\n\n`
+    prompt += `k) Após o pedido ser criado com sucesso, mostre a confirmação com o número do pedido:\n\n`
     prompt += `---\n`
     prompt += `✅ *Pedido #(número retornado) Criado!*\n\n`
     prompt += `💰 *Total:* R$ (total)\n`
@@ -895,24 +1113,41 @@ export class OpenAiService {
     prompt += `---\n\n`
 
     prompt += `### RECEBIMENTO DO COMPROVANTE DE PAGAMENTO\n\n`
-    prompt += `k) Quando o cliente enviar uma IMAGEM ou PDF de comprovante de pagamento (pix, transferência, depósito), use a função "registrar_pagamento" passando o customerPhone.\n`
-    prompt += `   - O sistema vai salvar a imagem do comprovante automaticamente\n`
+    prompt += `l) Quando o cliente enviar uma IMAGEM ou PDF de comprovante de pagamento (pix, transferência, depósito):\n`
+    prompt += `   1. PRIMEIRO: Analise a imagem do comprovante e identifique o VALOR da transação (valor do PIX/transferência)\n`
+    prompt += `   2. DEPOIS: Use a função "registrar_pagamento" passando o customerPhone E o proofAmount (valor identificado no comprovante)\n`
+    prompt += `   - O sistema vai comparar automaticamente o valor do comprovante com o valor esperado da reserva\n`
+    prompt += `   - Se o valor for DIVERGENTE, o sistema retornará uma mensagem para informar ao cliente que a equipe irá verificar\n`
+    prompt += `   - Se o valor BATER, confirme que recebemos o comprovante normalmente\n`
     prompt += `   - O pedido será atualizado para status RESERVATION (aguardando verificação do administrador)\n`
-    prompt += `   - Informe ao cliente que recebemos o comprovante e que o administrador irá verificar\n`
     if (hasReservation) {
-      prompt += `   - Mensagem sugerida: "Recebemos o comprovante de pagamento da reserva do Pedido #(número)! 🎉 O administrador vai verificar o pagamento. Após a confirmação, iniciaremos a produção. Obrigado!"\n\n`
+      prompt += `   - Se valor OK: "Recebemos o comprovante de pagamento da reserva do Pedido #(número)! 🎉 O administrador vai verificar o pagamento. Após a confirmação, iniciaremos a produção. Obrigado!"\n`
+      prompt += `   - Se valor divergente: Use a mensagem retornada pelo sistema (sobre a equipe verificar)\n\n`
     } else {
-      prompt += `   - Mensagem sugerida: "Recebemos o comprovante de pagamento do Pedido #(número)! 🎉 O administrador vai verificar o pagamento e em breve iniciaremos a produção. Obrigado!"\n\n`
+      prompt += `   - Se valor OK: "Recebemos o comprovante de pagamento do Pedido #(número)! 🎉 O administrador vai verificar o pagamento e em breve iniciaremos a produção. Obrigado!"\n`
+      prompt += `   - Se valor divergente: Use a mensagem retornada pelo sistema (sobre a equipe verificar)\n\n`
     }
+
+    prompt += `### CONSULTA DE PEDIDO\n\n`
+    prompt += `m) Quando o cliente perguntar sobre o status, valor, reserva ou qualquer dado de um pedido, use a função "consultar_pedido".\n`
+    prompt += `   - O cliente pode fornecer o número do pedido e/ou o número de celular\n`
+    prompt += `   - Se o cliente informar o número do pedido, passe "orderId"\n`
+    prompt += `   - Se informar o telefone, passe "customerPhone"\n`
+    prompt += `   - Se não informar nenhum dos dois, peça o número do pedido ou o celular cadastrado\n`
+    prompt += `   - Apresente as informações do pedido de forma clara e organizada\n`
+    prompt += `   - Inclua a data prevista de entrega na resposta se disponível\n\n`
 
     prompt += `IMPORTANTE:\n`
     prompt += `- Quando o cliente escolher uma categoria, responda SOMENTE com [MOSTRAR_PRODUTOS:NomeDaCategoria], sem nenhum texto antes ou depois\n`
     prompt += `- SEMPRE peça o celular com DDD antes de fechar o pedido\n`
     prompt += `- SEMPRE busque o cliente na base antes de prosseguir\n`
     prompt += `- SEMPRE verifique o tipo de entrega disponível\n`
+    prompt += `- SEMPRE use "consultar_agenda" ANTES de perguntar a data prevista de entrega ao cliente\n`
+    prompt += `- SEMPRE respeite a disponibilidade da agenda: não crie pedidos para datas lotadas ou não configuradas (se a agenda estiver ativa)\n`
     prompt += `- SEMPRE confirme os dados com o cliente antes de cadastrar\n`
     prompt += `- SEMPRE use a função "criar_pedido" para gravar o pedido após confirmação do cliente\n`
-    prompt += `- SEMPRE use a função "registrar_pagamento" quando o cliente enviar comprovante\n`
+    prompt += `- SEMPRE use a função "registrar_pagamento" quando o cliente enviar comprovante, informando o valor identificado (proofAmount)\n`
+    prompt += `- SEMPRE use a função "consultar_pedido" quando o cliente perguntar sobre status, valor ou dados de um pedido\n`
     prompt += `- Sempre use os preços exatos do catálogo acima\n`
     prompt += `- Calcule o total corretamente (quantidade x preço de cada item)\n`
     if (hasReservation) {
@@ -976,6 +1211,28 @@ export class OpenAiService {
       }
     }
     return fees
+  }
+
+  // Parseia string de data de entrega (ex: "25/03/2026 às 14h", "2026-03-25") para Date UTC
+  _parseDeliveryDate(dateStr) {
+    if (!dateStr) return null
+    try {
+      // Tenta formato dd/mm/yyyy
+      const brMatch = dateStr.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/)
+      if (brMatch) {
+        const [, day, month, year] = brMatch
+        return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)))
+      }
+      // Tenta formato yyyy-mm-dd
+      const isoMatch = dateStr.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/)
+      if (isoMatch) {
+        const [, year, month, day] = isoMatch
+        return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)))
+      }
+      return null
+    } catch {
+      return null
+    }
   }
 
   // Busca taxa de entrega para um bairro/cidade específico

@@ -90,11 +90,24 @@ export class OrderController {
       data: { status },
     })
 
+    // Envia notificação via WhatsApp quando o pedido é confirmado
+    if (status === 'CONFIRMED' && order.remoteJid) {
+      const deliveryInfo = order.estimatedDeliveryDate
+        ? `\n📅 *Previsão de entrega:* ${order.estimatedDeliveryDate}`
+        : ''
+      await OrderController._sendWhatsApp(
+        request.user.id,
+        order.remoteJid,
+        `✅ *Pedido #${order.id} Confirmado!*\n\nSeu pedido foi confirmado e logo será preparado para entrega! 🎂${deliveryInfo}`
+      )
+    }
+
     return updated
   }
 
   async verifyProof(request, reply) {
     const { id } = request.params
+    const { depositAmount, depositDivergence } = request.body || {}
 
     const order = await prisma.order.findFirst({
       where: { id: Number(id), userId: request.user.id },
@@ -106,9 +119,17 @@ export class OrderController {
       return reply.status(400).send({ error: 'Este pedido não possui comprovante anexado' })
     }
 
+    const updateData = { proofVerified: true, status: 'CONFIRMED' }
+
+    // Se o operador informou valor manual do depósito (divergência de preço)
+    if (depositAmount !== undefined && depositAmount !== null) {
+      updateData.depositAmount = Number(depositAmount)
+      updateData.depositDivergence = !!depositDivergence
+    }
+
     const updated = await prisma.order.update({
       where: { id: Number(id) },
-      data: { proofVerified: true, status: 'CONFIRMED' },
+      data: updateData,
       include: { items: { include: { product: true } } },
     })
 
@@ -151,6 +172,25 @@ export class OrderController {
     return updated
   }
 
+  async updateInternalNotes(request, reply) {
+    const { id } = request.params
+    const { internalNotes } = request.body
+
+    const order = await prisma.order.findFirst({
+      where: { id: Number(id), userId: request.user.id },
+    })
+    if (!order) {
+      return reply.status(404).send({ error: 'Pedido não encontrado' })
+    }
+
+    const updated = await prisma.order.update({
+      where: { id: Number(id) },
+      data: { internalNotes: internalNotes || null },
+    })
+
+    return updated
+  }
+
   async cancelOrder(request, reply) {
     const { id } = request.params
 
@@ -170,16 +210,105 @@ export class OrderController {
       include: { items: { include: { product: true } } },
     })
 
-    // Envia notificação de cancelamento via WhatsApp
-    if (order.remoteJid) {
-      await OrderController._sendWhatsApp(
-        request.user.id,
-        order.remoteJid,
-        `❌ *Pedido #${order.id} Cancelado*\n\nSeu pedido foi cancelado pelo estabelecimento. Para mais informações, entre em contato.`
-      )
+    // Decrementa contador na agenda se o pedido tinha data prevista
+    if (order.estimatedDeliveryDate) {
+      const parsedDate = OrderController._parseDeliveryDate(order.estimatedDeliveryDate)
+      if (parsedDate) {
+        const slot = await prisma.agendaSlot.findUnique({
+          where: { userId_date: { userId: request.user.id, date: parsedDate } },
+        })
+        if (slot && slot.currentOrders > 0) {
+          await prisma.agendaSlot.update({
+            where: { id: slot.id },
+            data: { currentOrders: { decrement: 1 } },
+          })
+        }
+      }
+    }
+
+    // Envia notificação de cancelamento via WhatsApp com dados de contato (se notify não for false)
+    const { notify } = request.body || {}
+    if (notify !== false && order.remoteJid) {
+      const contactInfo = await OrderController._getContactInfo(request.user.id)
+      let msg = `❌ *Pedido #${order.id} Cancelado*\n\nSeu pedido foi cancelado pelo estabelecimento.`
+      if (contactInfo) {
+        msg += `\n\nPara mais informações, entre em contato:\n${contactInfo}`
+      } else {
+        msg += `\n\nPara mais informações, entre em contato com o estabelecimento.`
+      }
+      await OrderController._sendWhatsApp(request.user.id, order.remoteJid, msg)
     }
 
     return updated
+  }
+
+  // Parseia string de data de entrega para Date UTC
+  static _parseDeliveryDate(dateStr) {
+    if (!dateStr) return null
+    try {
+      const brMatch = dateStr.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/)
+      if (brMatch) {
+        const [, day, month, year] = brMatch
+        return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)))
+      }
+      const isoMatch = dateStr.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/)
+      if (isoMatch) {
+        const [, year, month, day] = isoMatch
+        return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)))
+      }
+      return null
+    } catch {
+      return null
+    }
+  }
+
+  // Busca informações de contato/suporte nas instruções do agente e dados do usuário
+  static async _getContactInfo(userId) {
+    try {
+      const parts = []
+
+      // Busca telefone e dados do usuário dono do estabelecimento
+      const user = await prisma.user.findUnique({ where: { id: userId } })
+      if (user?.phone) {
+        const phone = user.phone.replace(/\D/g, '')
+        parts.push(`📱 ${user.phone}`)
+      }
+
+      // Busca nas instruções do agente por links/contatos de suporte
+      const instructions = await prisma.agentInstruction.findMany({
+        where: { userId, active: true },
+      })
+
+      const allContent = instructions.map(i => `${i.title} ${i.content}`).join('\n')
+
+      // Busca URLs (links de suporte, redes sociais, etc)
+      const urlRegex = /https?:\/\/[^\s,)}\]]+/gi
+      const urls = allContent.match(urlRegex)
+      if (urls) {
+        // Pega URLs únicas
+        const uniqueUrls = [...new Set(urls)]
+        for (const url of uniqueUrls) {
+          parts.push(`🔗 ${url}`)
+        }
+      }
+
+      // Busca números de telefone no conteúdo (formato brasileiro)
+      const phoneRegex = /\(?\d{2}\)?\s*\d{4,5}[-.\s]?\d{4}/g
+      const phones = allContent.match(phoneRegex)
+      if (phones) {
+        const uniquePhones = [...new Set(phones)]
+        for (const phone of uniquePhones) {
+          if (!parts.some(p => p.includes(phone.replace(/\D/g, '')))) {
+            parts.push(`📱 ${phone.trim()}`)
+          }
+        }
+      }
+
+      return parts.length > 0 ? parts.join('\n') : null
+    } catch (err) {
+      console.error('Erro ao buscar info de contato:', err.message)
+      return null
+    }
   }
 
   // Helper para enviar mensagem WhatsApp via Evolution API

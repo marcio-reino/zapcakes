@@ -4,6 +4,8 @@ import toast from 'react-hot-toast'
 import ConfirmModal from '../../components/ConfirmModal.jsx'
 import { FiCheckCircle, FiImage, FiFile, FiX, FiXCircle, FiTruck, FiDollarSign } from 'react-icons/fi'
 
+const padId = (id) => String(id).padStart(5, '0')
+
 const statusLabels = {
   PENDING: 'Pendente',
   RESERVATION: 'Reserva',
@@ -111,7 +113,7 @@ export default function AdminOrders() {
             <div key={order.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6">
               <div className="flex justify-between items-start mb-4">
                 <div>
-                  <h3 className="font-semibold text-gray-800 dark:text-white">Pedido #{order.id}</h3>
+                  <h3 className="font-semibold text-gray-800 dark:text-white">Pedido #{padId(order.id)}</h3>
                   <p className="text-sm text-gray-500 dark:text-gray-400">{order.customerName} - {order.customerPhone}</p>
                   <p className="text-xs text-gray-400 dark:text-gray-500">{new Date(order.createdAt).toLocaleString('pt-BR')}</p>
                   {order.deliveryType && (
@@ -251,7 +253,7 @@ export default function AdminOrders() {
           <div className="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden animate-slideDown">
             <div className="flex items-center justify-between px-6 py-4 border-b bg-gray-50 dark:bg-gray-700 dark:border-gray-600">
               <div>
-                <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Comprovante - Pedido #{proofModal.id}</h2>
+                <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Comprovante - Pedido #{padId(proofModal.id)}</h2>
                 <p className="text-sm text-gray-500 dark:text-gray-400">{proofModal.customerName} - R$ {Number(proofModal.reservation || proofModal.total).toFixed(2)}</p>
               </div>
               <button onClick={() => setProofModal(null)} className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors">
@@ -315,7 +317,7 @@ export default function AdminOrders() {
         isOpen={!!cancelConfirm}
         onClose={() => setCancelConfirm(null)}
         title="Cancelar Pedido"
-        message={cancelConfirm ? `Tem certeza que deseja cancelar o Pedido #${cancelConfirm.id}? O cliente será notificado via WhatsApp.` : ''}
+        message={cancelConfirm ? `Tem certeza que deseja cancelar o Pedido #${padId(cancelConfirm.id)}? O cliente será notificado via WhatsApp.` : ''}
         confirmText="Cancelar Pedido"
         onConfirm={() => cancelConfirm && cancelOrder(cancelConfirm.id)}
       />

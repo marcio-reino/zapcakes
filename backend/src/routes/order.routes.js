@@ -12,4 +12,5 @@ export async function orderRoutes(app) {
   app.put('/:id/verify-proof', controller.verifyProof)
   app.put('/:id/confirm-payment', controller.confirmPayment)
   app.put('/:id/cancel', controller.cancelOrder)
+  app.put('/:id/internal-notes', controller.updateInternalNotes)
 }

@@ -35,6 +35,7 @@ model User {
   account           Account?
   agentInstructions AgentInstruction[]
   customers         Customer[]
+  agendaSlots       AgendaSlot[]
 
   @@map("users")
 }
@@ -92,8 +93,11 @@ model Account {
   userId        Int           @unique @map("user_id")
   planId        Int?          @map("plan_id")
   companyName   String?       @map("company_name")
+  legalName     String?       @map("legal_name")
   document      String?       @db.VarChar(18) // CPF (14) ou CNPJ (18) formatado
   documentType  DocumentType? @map("document_type")
+  logoUrl       String?       @map("logo_url") @db.Text
+  responsible   String?
   status        AccountStatus @default(ACTIVE)
   trialEndsAt   DateTime?     @map("trial_ends_at")
   planStartedAt DateTime?     @map("plan_started_at")
@@ -206,8 +210,9 @@ model Category {
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
 
-  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  products Product[]
+  user               User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  products           Product[]
+  agendaCategorySlots AgendaCategorySlot[]
 
   @@map("categories")
 }
@@ -283,7 +288,11 @@ model Order {
   paymentProof    String?     @map("payment_proof") @db.Text
   proofVerified   Boolean     @default(false) @map("proof_verified")
   paymentConfirmed Boolean    @default(false) @map("payment_confirmed")
+  depositAmount   Decimal?    @map("deposit_amount") @db.Decimal(10, 2)
+  depositDivergence Boolean   @default(false) @map("deposit_divergence")
+  estimatedDeliveryDate String? @map("estimated_delivery_date") @db.VarChar(100)
   notes           String?     @db.Text
+  internalNotes   String?     @map("internal_notes") @db.Text
   createdAt       DateTime    @default(now()) @map("created_at")
   updatedAt       DateTime    @updatedAt @map("updated_at")
 
@@ -343,6 +352,39 @@ enum AgentInstructionCategory {
   PRODUCTS
   QUESTIONS
   CLOSING
+}
+
+// Agenda de capacidade diária do operador
+model AgendaSlot {
+  id            Int      @id @default(autoincrement())
+  userId        Int      @map("user_id")
+  date          DateTime @db.Date
+  maxOrders     Int      @map("max_orders")
+  currentOrders Int      @default(0) @map("current_orders")
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categorySlots  AgendaCategorySlot[]
+
+  @@unique([userId, date])
+  @@map("agenda_slots")
+}
+
+// Limite de unidades por categoria em cada dia da agenda
+model AgendaCategorySlot {
+  id            Int      @id @default(autoincrement())
+  agendaSlotId  Int      @map("agenda_slot_id")
+  categoryId    Int      @map("category_id")
+  maxUnits      Int      @map("max_units")
+  currentUnits  Int      @default(0) @map("current_units")
+
+  agendaSlot AgendaSlot @relation(fields: [agendaSlotId], references: [id], onDelete: Cascade)
+  category   Category   @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([agendaSlotId, categoryId])
+  @@map("agenda_category_slots")
 }
 
 // Mensagens do WhatsApp (log)

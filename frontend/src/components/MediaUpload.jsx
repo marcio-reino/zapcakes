@@ -2,7 +2,7 @@ import { useState, useRef } from 'react'
 import { FiUpload, FiX, FiFile, FiMusic, FiImage } from 'react-icons/fi'
 import ImageUpload from './ImageUpload.jsx'
 
-const ACCEPT_ALL = 'image/jpeg,image/png,image/webp,image/gif,application/pdf,audio/mpeg,audio/mp3'
+const ACCEPT_ALL = 'image/jpeg,image/png,image/webp,image/gif,application/pdf,audio/mpeg,audio/mp3,audio/ogg'
 
 function getFileInfo(value) {
   if (!value) return null
@@ -19,7 +19,7 @@ function getFileInfo(value) {
     const lower = value.toLowerCase()
     if (lower.match(/\.(jpg|jpeg|png|webp|gif)(\?|$)/)) return { kind: 'image', name: 'imagem' }
     if (lower.match(/\.pdf(\?|$)/)) return { kind: 'pdf', name: 'documento.pdf' }
-    if (lower.match(/\.(mp3|mpeg)(\?|$)/)) return { kind: 'audio', name: 'audio.mp3' }
+    if (lower.match(/\.(mp3|mpeg|ogg)(\?|$)/)) return { kind: 'audio', name: 'audio' }
     return { kind: 'image', name: 'arquivo' }
   }
 
@@ -40,10 +40,10 @@ export default function MediaUpload({ value, onChange }) {
     const allowed = [
       'image/jpeg', 'image/png', 'image/webp', 'image/gif',
       'application/pdf',
-      'audio/mpeg', 'audio/mp3',
+      'audio/mpeg', 'audio/mp3', 'audio/ogg',
     ]
     if (!allowed.includes(file.type)) {
-      alert('Tipo não permitido. Use JPEG, PNG, WebP, GIF, PDF ou MP3.')
+      alert('Tipo não permitido. Use JPEG, PNG, WebP, GIF, PDF, MP3 ou OGG.')
       return
     }
 
@@ -85,7 +85,7 @@ export default function MediaUpload({ value, onChange }) {
     const Icon = info.kind === 'pdf' ? FiFile : FiMusic
     const color = info.kind === 'pdf' ? 'text-red-500' : 'text-blue-500'
     const bg = info.kind === 'pdf' ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800' : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
-    const label = info.kind === 'pdf' ? 'PDF' : 'MP3'
+    const label = info.kind === 'pdf' ? 'PDF' : 'Áudio'
 
     const fileName = value instanceof File ? value.name : (typeof value === 'string' ? value.split('/').pop()?.split('?')[0] : info.name)
 

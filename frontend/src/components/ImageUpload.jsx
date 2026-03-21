@@ -12,21 +12,17 @@ function createImage(url) {
   })
 }
 
-async function getCroppedImg(imageSrc, pixelCrop, rotation = 0) {
+async function getCroppedImg(imageSrc, pixelCrop, rotation = 0, outputWidth = 600, outputHeight = 600) {
   const image = await createImage(imageSrc)
   const canvas = document.createElement('canvas')
   const ctx = canvas.getContext('2d')
 
-  const size = 600
-  canvas.width = size
-  canvas.height = size
+  canvas.width = outputWidth
+  canvas.height = outputHeight
 
-  ctx.translate(size / 2, size / 2)
+  ctx.translate(outputWidth / 2, outputHeight / 2)
   ctx.rotate((rotation * Math.PI) / 180)
-  ctx.translate(-size / 2, -size / 2)
-
-  const scaleX = size / pixelCrop.width
-  const scaleY = size / pixelCrop.height
+  ctx.translate(-outputWidth / 2, -outputHeight / 2)
 
   ctx.drawImage(
     image,
@@ -36,8 +32,8 @@ async function getCroppedImg(imageSrc, pixelCrop, rotation = 0) {
     pixelCrop.height,
     0,
     0,
-    size,
-    size
+    outputWidth,
+    outputHeight
   )
 
   return new Promise((resolve) => {
@@ -45,7 +41,11 @@ async function getCroppedImg(imageSrc, pixelCrop, rotation = 0) {
   })
 }
 
-export default function ImageUpload({ value, onChange }) {
+const DEFAULT_ASPECTS = [{ label: '1:1', value: 1, w: 600, h: 600 }]
+
+export default function ImageUpload({ value, onChange, aspectOptions }) {
+  const aspects = aspectOptions && aspectOptions.length > 0 ? aspectOptions : DEFAULT_ASPECTS
+  const [selectedAspect, setSelectedAspect] = useState(0)
   const [imageSrc, setImageSrc] = useState(null)
   const [crop, setCrop] = useState({ x: 0, y: 0 })
   const [zoom, setZoom] = useState(1)
@@ -118,7 +118,8 @@ export default function ImageUpload({ value, onChange }) {
 
   async function handleCropConfirm() {
     if (!croppedAreaPixels || !imageSrc) return
-    const blob = await getCroppedImg(imageSrc, croppedAreaPixels, rotation)
+    const a = aspects[selectedAspect]
+    const blob = await getCroppedImg(imageSrc, croppedAreaPixels, rotation, a.w, a.h)
     onChange(blob)
     setShowCropper(false)
     setImageSrc(null)
@@ -143,11 +144,32 @@ export default function ImageUpload({ value, onChange }) {
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
           <div className="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
             <div className="flex items-center justify-between px-5 py-3 border-b bg-gray-50 dark:bg-gray-700 dark:border-gray-600">
-              <h3 className="text-sm font-semibold text-gray-800 dark:text-white">Recortar Imagem (600x600)</h3>
+              <h3 className="text-sm font-semibold text-gray-800 dark:text-white">
+                Recortar Imagem ({aspects[selectedAspect].w}x{aspects[selectedAspect].h})
+              </h3>
               <button onClick={handleCropCancel} className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg">
                 <FiX size={18} />
               </button>
             </div>
+
+            {aspects.length > 1 && (
+              <div className="flex items-center justify-center gap-2 px-5 py-2 bg-gray-50 dark:bg-gray-700 border-b dark:border-gray-600">
+                {aspects.map((a, i) => (
+                  <button
+                    key={a.label}
+                    type="button"
+                    onClick={() => setSelectedAspect(i)}
+                    className={`px-3 py-1 text-xs font-medium rounded-lg transition-colors ${
+                      selectedAspect === i
+                        ? 'bg-green-600 text-white'
+                        : 'bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-500'
+                    }`}
+                  >
+                    {a.label} ({a.w}x{a.h})
+                  </button>
+                ))}
+              </div>
+            )}
 
             <div className="relative w-full" style={{ height: '360px' }}>
               <Cropper
@@ -155,12 +177,18 @@ export default function ImageUpload({ value, onChange }) {
                 crop={crop}
                 zoom={zoom}
                 rotation={rotation}
-                aspect={1}
+                aspect={aspects[selectedAspect].value}
+                minZoom={0.3}
                 onCropChange={setCrop}
                 onZoomChange={setZoom}
                 onCropComplete={onCropComplete}
                 cropShape="rect"
                 showGrid
+                restrictPosition={false}
+                style={{
+                  containerStyle: { cursor: 'grab' },
+                  cropAreaStyle: { border: '2px solid #22c55e' },
+                }}
               />
             </div>
 
@@ -169,7 +197,7 @@ export default function ImageUpload({ value, onChange }) {
                 <FiZoomOut size={14} className="text-gray-400 shrink-0" />
                 <input
                   type="range"
-                  min={1}
+                  min={0.3}
                   max={3}
                   step={0.05}
                   value={zoom}

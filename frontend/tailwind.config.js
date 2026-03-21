@@ -21,6 +21,15 @@ export default {
           900: '#14532d',
         },
       },
+      animation: {
+        'bounce-slow': 'bounceSlow 3s ease-in-out infinite',
+      },
+      keyframes: {
+        bounceSlow: {
+          '0%, 100%': { transform: 'translateY(0)' },
+          '50%': { transform: 'translateY(-8px)' },
+        },
+      },
     },
   },
   plugins: [],

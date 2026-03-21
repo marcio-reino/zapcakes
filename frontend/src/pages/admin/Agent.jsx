@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import api from '../../services/api.js'
 import toast from 'react-hot-toast'
-import { FiPlus, FiEdit2, FiTrash2, FiMessageSquare, FiBriefcase, FiShoppingCart, FiPackage, FiHelpCircle, FiCheckCircle, FiImage, FiSmartphone, FiRefreshCw, FiWifi, FiWifiOff, FiFile, FiMusic } from 'react-icons/fi'
+import { FiPlus, FiEdit2, FiTrash2, FiMessageSquare, FiBriefcase, FiShoppingCart, FiPackage, FiHelpCircle, FiCheckCircle, FiImage, FiSmartphone, FiRefreshCw, FiWifi, FiWifiOff, FiFile, FiMusic, FiPlay, FiPause } from 'react-icons/fi'
 
 import Modal from '../../components/Modal.jsx'
 import ConfirmModal from '../../components/ConfirmModal.jsx'
@@ -28,6 +28,24 @@ export default function AdminAgent() {
   const [qrCode, setQrCode] = useState(null)
   const [whatsappStatus, setWhatsappStatus] = useState(null)
   const [connecting, setConnecting] = useState(false)
+  const [playingAudio, setPlayingAudio] = useState(null) // instruction id
+  const audioRef = useRef(null)
+
+  function toggleAudio(instructionId, url) {
+    if (playingAudio === instructionId) {
+      audioRef.current?.pause()
+      setPlayingAudio(null)
+      return
+    }
+    if (audioRef.current) {
+      audioRef.current.pause()
+    }
+    const audio = new Audio(url)
+    audio.onended = () => setPlayingAudio(null)
+    audio.play()
+    audioRef.current = audio
+    setPlayingAudio(instructionId)
+  }
 
   const loadAgentStatus = useCallback(async () => {
     try {
@@ -240,8 +258,24 @@ export default function AdminAgent() {
                         if (url.match(/\.pdf(\?|$)/)) {
                           return <div className="w-12 h-12 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 flex items-center justify-center shrink-0"><FiFile size={20} className="text-red-500" /></div>
                         }
-                        if (url.match(/\.(mp3|mpeg)(\?|$)/)) {
-                          return <div className="w-12 h-12 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 flex items-center justify-center shrink-0"><FiMusic size={20} className="text-blue-500" /></div>
+                        if (url.match(/\.(mp3|mpeg|ogg)(\?|$)/)) {
+                          const isPlaying = playingAudio === instruction.id
+                          return (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); toggleAudio(instruction.id, instruction.imageUrl) }}
+                              className={`w-12 h-12 rounded-lg border flex items-center justify-center shrink-0 transition-all ${
+                                isPlaying
+                                  ? 'bg-blue-500 border-blue-500 shadow-md shadow-blue-500/30'
+                                  : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/40'
+                              }`}
+                            >
+                              {isPlaying
+                                ? <FiPause size={18} className="text-white" />
+                                : <FiPlay size={18} className="text-blue-500 ml-0.5" />
+                              }
+                            </button>
+                          )
                         }
                         return <img src={instruction.imageUrl} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" />
                       })()}
@@ -253,7 +287,7 @@ export default function AdminAgent() {
                           {instruction.imageUrl && !instruction.imageUrl.startsWith('blob:') && (() => {
                             const url = instruction.imageUrl.toLowerCase()
                             if (url.match(/\.pdf(\?|$)/)) return <FiFile size={14} className="text-red-400" />
-                            if (url.match(/\.(mp3|mpeg)(\?|$)/)) return <FiMusic size={14} className="text-blue-400" />
+                            if (url.match(/\.(mp3|mpeg|ogg)(\?|$)/)) return <FiMusic size={14} className="text-blue-400" />
                             return <FiImage size={14} className="text-gray-400" />
                           })()}
                           {!instruction.active && (
