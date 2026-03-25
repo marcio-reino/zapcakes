@@ -25,12 +25,12 @@ Email: sistemazapcakes@gmail.com
 Instagram: sistemazapcakes
 Zc200326
 
-mach9-zapcakes-frontend.wxclq8.easypanel.host
-
-Ingressar: https://teams.microsoft.com/meet/24075894415655?p=LFGgtbV4KlJYQJB6o4
-ID da Reunião: 240 758 944 156 55
-Senha: vB3XU3Rj
 
 
 
+Projeto: mach9
+zapcakes-api	Node.js (box)	mach9-zapcakes-app.wxclq8.easypanel.host
+zapcakes-frontend	Node.js (box)	app.zapcakes.com
+zapcakes-site	Node.js (box)	www.zapcakes.com
+zapcakes-mysql	MySQL 9	(interno, porta 1)
 

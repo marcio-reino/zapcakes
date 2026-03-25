@@ -42,7 +42,7 @@ export default function Hero() {
           </h1>
 
           <p className="text-lg text-gray-500 max-w-xl mb-8 opacity-0 animate-fade-in-delay-2 mx-auto md:mx-0">
-            Atenda seus clientes 24h pelo WhatsApp com inteligência artificial. Pedidos, entregas, agendamentos e financeiro — tudo automatizado em um só lugar.
+            Atenda seus clientes 24h pelo site e WhatsApp com inteligência artificial. Pedidos, entregas, agendamentos e financeiro — tudo automatizado em um só lugar.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center md:justify-start opacity-0 animate-fade-in-delay-2">

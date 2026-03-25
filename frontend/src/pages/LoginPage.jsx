@@ -177,7 +177,7 @@ export default function LoginPage() {
             o ZapCakes faz <span className="text-green-200">o resto</span>.
           </h1>
           <p className="text-green-100/80 text-xl xl:text-2xl leading-relaxed">
-            Atenda seus clientes 24h pelo WhatsApp com inteligência artificial. Pedidos, entregas e financeiro — tudo automatizado em um só lugar.
+            Atenda seus clientes 24h pelo site e WhatsApp com inteligência artificial. Pedidos, entregas e financeiro — tudo automatizado em um só lugar.
           </p>
         </div>
       </div>
