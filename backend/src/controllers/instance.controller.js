@@ -20,7 +20,19 @@ export class InstanceController {
   }
 
   async create(request, reply) {
-    const { instanceName } = request.body
+    // Busca account do usuário para gerar nome automático
+    const account = await prisma.account.findUnique({ where: { userId: request.user.id } })
+    if (!account) {
+      return reply.status(400).send({ error: 'Conta empresarial não configurada' })
+    }
+
+    // Verifica se já existe instância para este usuário
+    const existing = await prisma.instance.findFirst({ where: { userId: request.user.id } })
+    if (existing) {
+      return reply.status(400).send({ error: 'Já existe uma instância WhatsApp para esta conta. Remova a existente antes de criar outra.' })
+    }
+
+    const instanceName = `ZapCakes-${account.id}`
 
     const { data } = await evolutionApi.post('/instance/create', {
       instanceName,

@@ -178,11 +178,49 @@ export default function Customers() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Pesquisar por nome, telefone ou e-mail..."
-          className="w-full pl-11 pr-4 py-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm text-gray-900 dark:text-white placeholder-gray-400"
+          className="w-full pl-11 pr-4 py-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-base md:text-sm text-gray-900 dark:text-white placeholder-gray-400"
         />
       </div>
 
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
+      {/* Mobile: Cards */}
+      <div className="md:hidden space-y-3">
+        {filtered.map((customer) => (
+          <div key={customer.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4">
+            <div className="flex items-start justify-between mb-3">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{customer.name}</h3>
+                <span className={`inline-block mt-1 px-2 py-0.5 text-xs rounded-full ${
+                  customer.active ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
+                }`}>
+                  {customer.active ? 'Ativo' : 'Inativo'}
+                </span>
+              </div>
+              <div className="flex gap-1">
+                <button onClick={() => startEdit(customer)} className="p-2 bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-400 dark:hover:bg-gray-600 rounded-lg transition-colors">
+                  <FiEdit2 size={16} />
+                </button>
+                <button onClick={() => toggleActive(customer)} className="p-2 bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-400 dark:hover:bg-gray-600 rounded-lg transition-colors">
+                  {customer.active ? <FiToggleRight size={16} /> : <FiToggleLeft size={16} />}
+                </button>
+                <button onClick={() => setDeleteId(customer.id)} className="p-2 bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-400 dark:hover:bg-gray-600 rounded-lg transition-colors">
+                  <FiTrash2 size={16} />
+                </button>
+              </div>
+            </div>
+            <div className="space-y-1.5 text-base text-gray-500 dark:text-gray-400">
+              {customer.phone && <p>Tel: {customer.phone}</p>}
+              {customer.email && <p>Email: {customer.email}</p>}
+              {customer.city && customer.state && <p>Local: {customer.city}/{customer.state}</p>}
+            </div>
+          </div>
+        ))}
+        {filtered.length === 0 && (
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm px-6 py-8 text-center text-gray-400">Nenhum cliente encontrado</div>
+        )}
+      </div>
+
+      {/* Desktop: Table */}
+      <div className="hidden md:block bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
         <table className="w-full">
           <thead className="bg-gray-50 dark:bg-gray-700">
             <tr>

@@ -206,7 +206,7 @@ export default function AdminCombos() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Pesquisar por nome do combo..."
-          className="w-full pl-11 pr-4 py-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm text-gray-900 dark:text-white placeholder-gray-400"
+          className="w-full pl-11 pr-4 py-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-base md:text-sm text-gray-900 dark:text-white placeholder-gray-400"
         />
       </div>
 
@@ -388,7 +388,61 @@ export default function AdminCombos() {
         confirmText="Remover"
       />
 
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
+      {/* Mobile: Cards */}
+      <div className="md:hidden space-y-3">
+        {combos.filter((c) => {
+          if (search.trim() && !(c.name || '').toLowerCase().includes(search.toLowerCase())) return false
+          return true
+        }).map((c) => (
+          <div key={c.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4">
+            <div className="flex items-start gap-3">
+              {c.imageUrl ? (
+                <img src={c.imageUrl} alt={c.name} className="w-16 h-16 rounded-lg object-cover shrink-0" />
+              ) : (
+                <div className="w-16 h-16 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-gray-400 text-sm shrink-0">Sem</div>
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-start justify-between">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{c.name}</h3>
+                  <span className={`shrink-0 ml-2 px-2 py-0.5 text-xs rounded-full ${c.active ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'}`}>
+                    {c.active ? 'Ativo' : 'Inativo'}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {c.items.map((i) => (
+                    <span key={i.id} className="px-2 py-0.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-full">
+                      {i.quantity > 1 ? `${i.quantity}x ` : ''}{i.product.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center justify-between mt-3">
+              <div className="space-y-0.5">
+                <p className="text-base text-gray-500 dark:text-gray-400">Total: R$ {toBRL(c.totalProducts)} <span className="text-red-500">-R$ {toBRL(c.discount)}</span></p>
+                <p className="text-lg font-semibold text-green-600 dark:text-green-400">R$ {toBRL(c.finalPrice)}</p>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => startEdit(c)} className="p-3 bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-400 dark:hover:bg-gray-600 rounded-lg transition-colors">
+                  <FiEdit2 size={20} />
+                </button>
+                <button onClick={() => setDeleteId(c.id)} className="p-3 bg-gray-100 text-gray-500 hover:bg-red-100 hover:text-red-600 dark:bg-gray-700 dark:text-gray-400 dark:hover:bg-red-900/30 dark:hover:text-red-400 rounded-lg transition-colors">
+                  <FiTrash2 size={20} />
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+        {combos.filter((c) => {
+          if (search.trim() && !(c.name || '').toLowerCase().includes(search.toLowerCase())) return false
+          return true
+        }).length === 0 && (
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm px-6 py-8 text-center text-gray-400">Nenhum combo encontrado</div>
+        )}
+      </div>
+
+      {/* Desktop: Table */}
+      <div className="hidden md:block bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
         <table className="w-full">
           <thead className="bg-gray-50 dark:bg-gray-700">
             <tr>

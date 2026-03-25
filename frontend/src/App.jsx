@@ -3,6 +3,7 @@ import { useAuth } from './contexts/AuthContext.jsx'
 
 import AdminLayout from './layouts/AdminLayout.jsx'
 import ClientLayout from './layouts/ClientLayout.jsx'
+import SuperadminLayout from './layouts/SuperadminLayout.jsx'
 
 import LoginPage from './pages/LoginPage.jsx'
 import ResetPasswordPage from './pages/ResetPasswordPage.jsx'
@@ -29,13 +30,44 @@ import Products from './pages/admin/Products.jsx'
 import Combos from './pages/admin/Combos.jsx'
 import Agent from './pages/admin/Agent.jsx'
 import Customers from './pages/client/Customers.jsx'
+import Materials from './pages/client/Materials.jsx'
+import ShoppingLists from './pages/client/ShoppingLists.jsx'
+import Recipes from './pages/client/Recipes.jsx'
 
-function PrivateRoute({ children, adminOnly = false }) {
+// Store pages (public)
+import StoreLayout from './layouts/StoreLayout.jsx'
+import StoreFront from './pages/store/StoreFront.jsx'
+import StoreCart from './pages/store/StoreCart.jsx'
+import StoreLogin from './pages/store/StoreLogin.jsx'
+import StoreOrderConfirmation from './pages/store/StoreOrderConfirmation.jsx'
+import StoreMyOrders from './pages/store/StoreMyOrders.jsx'
+import StoreAccount from './pages/store/StoreAccount.jsx'
+import StoreChangePassword from './pages/store/StoreChangePassword.jsx'
+
+// Client store settings
+import StoreSite from './pages/client/StoreSite.jsx'
+
+// Superadmin pages
+import SuperadminDashboard from './pages/superadmin/Dashboard.jsx'
+import SuperadminAccounts from './pages/superadmin/Accounts.jsx'
+import SuperadminPlans from './pages/superadmin/Plans.jsx'
+import SuperadminFinancial from './pages/superadmin/Financial.jsx'
+import SuperadminConfig from './pages/superadmin/Config.jsx'
+import SuperadminAI from './pages/superadmin/AI.jsx'
+
+function getHomeRoute(role) {
+  if (role === 'SUPERADMIN') return '/admin-cwxp15'
+  if (role === 'ADMIN') return '/admin'
+  return '/client'
+}
+
+function PrivateRoute({ children, adminOnly = false, superadminOnly = false }) {
   const { user, loading } = useAuth()
 
   if (loading) return <div className="flex items-center justify-center h-screen">Carregando...</div>
   if (!user) return <Navigate to="/login" />
-  if (adminOnly && user.role !== 'ADMIN') return <Navigate to="/client" />
+  if (superadminOnly && user.role !== 'SUPERADMIN') return <Navigate to={getHomeRoute(user.role)} />
+  if (adminOnly && user.role !== 'ADMIN' && user.role !== 'SUPERADMIN') return <Navigate to="/client" />
 
   return children
 }
@@ -49,7 +81,7 @@ export default function App() {
 
   return (
     <Routes>
-      <Route path="/login" element={<LoginPage />} />
+      <Route path="/login" element={user ? <Navigate to={getHomeRoute(user.role)} /> : <LoginPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/register" element={<Navigate to="/login" />} />
 
@@ -74,11 +106,37 @@ export default function App() {
         <Route path="combos" element={<Combos />} />
         <Route path="agent" element={<Agent />} />
         <Route path="orders" element={<ClientOrders />} />
+        <Route path="orders/:orderCode" element={<ClientOrders />} />
+        <Route path="materials" element={<Materials />} />
+        <Route path="shopping-lists" element={<ShoppingLists />} />
+        <Route path="recipes" element={<Recipes />} />
+        <Route path="store-site" element={<StoreSite />} />
+      </Route>
+
+      {/* Superadmin Routes */}
+      <Route path="/admin-cwxp15" element={<PrivateRoute superadminOnly><SuperadminLayout /></PrivateRoute>}>
+        <Route index element={<SuperadminDashboard />} />
+        <Route path="accounts" element={<SuperadminAccounts />} />
+        <Route path="plans" element={<SuperadminPlans />} />
+        <Route path="financial" element={<SuperadminFinancial />} />
+        <Route path="ai" element={<SuperadminAI />} />
+        <Route path="config" element={<SuperadminConfig />} />
+      </Route>
+
+      {/* Public Store Routes */}
+      <Route path="/loja/:slug" element={<StoreLayout />}>
+        <Route index element={<StoreFront />} />
+        <Route path="carrinho" element={<StoreCart />} />
+        <Route path="login" element={<StoreLogin />} />
+        <Route path="pedido/:orderId" element={<StoreOrderConfirmation />} />
+        <Route path="meus-pedidos" element={<StoreMyOrders />} />
+        <Route path="minha-conta" element={<StoreAccount />} />
+        <Route path="alterar-senha" element={<StoreChangePassword />} />
       </Route>
 
       {/* Redirect */}
       <Route path="*" element={
-        user ? <Navigate to={user.role === 'ADMIN' ? '/admin' : '/client'} /> : <Navigate to="/login" />
+        user ? <Navigate to={getHomeRoute(user.role)} /> : <Navigate to="/login" />
       } />
     </Routes>
   )

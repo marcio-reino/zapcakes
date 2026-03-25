@@ -9,17 +9,31 @@ export class ProductController {
 
     const products = await prisma.product.findMany({
       where,
-      include: { category: true },
+      include: {
+        category: true,
+        recipe: {
+          include: {
+            items: { include: { material: { select: { id: true, name: true, unit: true, basePrice: true } } } },
+          },
+        },
+      },
       orderBy: { name: 'asc' },
     })
     return products
   }
 
   async create(request, reply) {
-    const { categoryId, name, description, price, imageUrl } = request.body
+    const { categoryId, name, description, price, imageUrl, minOrder, allowInspirationImages, inspirationInstruction, maxInspirationImages, recipeId } = request.body
 
     const product = await prisma.product.create({
-      data: { userId: request.user.id, categoryId, name, description, price, imageUrl },
+      data: {
+        userId: request.user.id, categoryId, name, description, price, imageUrl,
+        minOrder: minOrder || 1,
+        allowInspirationImages: allowInspirationImages || false,
+        inspirationInstruction: inspirationInstruction || null,
+        maxInspirationImages: maxInspirationImages || 3,
+        recipeId: recipeId || null,
+      },
     })
 
     return reply.status(201).send(product)
@@ -29,7 +43,14 @@ export class ProductController {
     const { id } = request.params
     const product = await prisma.product.findFirst({
       where: { id: Number(id), userId: request.user.id },
-      include: { category: true },
+      include: {
+        category: true,
+        recipe: {
+          include: {
+            items: { include: { material: { select: { id: true, name: true, unit: true, basePrice: true } } } },
+          },
+        },
+      },
     })
 
     if (!product) {
@@ -41,7 +62,7 @@ export class ProductController {
 
   async update(request, reply) {
     const { id } = request.params
-    const { categoryId, name, description, price, imageUrl, active } = request.body
+    const { categoryId, name, description, price, imageUrl, active, minOrder, allowInspirationImages, inspirationInstruction, maxInspirationImages, recipeId } = request.body
 
     const product = await prisma.product.findFirst({
       where: { id: Number(id), userId: request.user.id },
@@ -52,7 +73,7 @@ export class ProductController {
 
     const updated = await prisma.product.update({
       where: { id: Number(id) },
-      data: { categoryId, name, description, price, imageUrl, active },
+      data: { categoryId, name, description, price, imageUrl, active, minOrder, allowInspirationImages, inspirationInstruction, maxInspirationImages, recipeId: recipeId !== undefined ? (recipeId || null) : undefined },
     })
 
     return updated

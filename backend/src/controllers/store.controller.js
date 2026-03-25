@@ -1,0 +1,676 @@
+import bcrypt from 'bcryptjs'
+import prisma from '../config/database.js'
+import { UploadService } from '../services/upload.service.js'
+import { AccountService } from '../services/account.service.js'
+import openai from '../config/openai.js'
+import evolutionApi from '../config/evolution.js'
+
+async function resolveSlug(slug, reply) {
+  const account = await prisma.account.findFirst({
+    where: { slug, storeActive: true },
+    select: { userId: true, companyName: true, logoUrl: true },
+  })
+  if (!account) {
+    reply.status(404).send({ error: 'Loja não encontrada' })
+    return null
+  }
+  return account
+}
+
+export class StoreController {
+  // GET /api/store/:slug — info da loja
+  async getStore(request, reply) {
+    const { slug } = request.params
+    const account = await prisma.account.findFirst({
+      where: { slug, storeActive: true },
+      select: {
+        companyName: true, logoUrl: true, useReservation: true, reservationPercent: true, deliveryEnabled: true,
+        user: {
+          select: {
+            phone: true, city: true, state: true,
+            street: true, number: true, neighborhood: true,
+          },
+        },
+      },
+    })
+    if (!account) return reply.status(404).send({ error: 'Loja não encontrada' })
+
+    return {
+      companyName: account.companyName,
+      logoUrl: account.logoUrl,
+      phone: account.user.phone,
+      city: account.user.city,
+      state: account.user.state,
+      address: [account.user.street, account.user.number, account.user.neighborhood].filter(Boolean).join(', '),
+      useReservation: account.useReservation || false,
+      reservationPercent: account.reservationPercent || null,
+      deliveryEnabled: account.deliveryEnabled || false,
+    }
+  }
+
+  // GET /api/store/:slug/categories
+  async getCategories(request, reply) {
+    const { slug } = request.params
+    const account = await resolveSlug(slug, reply)
+    if (!account) return
+
+    const categories = await prisma.category.findMany({
+      where: { userId: account.userId, active: true },
+      select: {
+        id: true, name: true,
+        _count: { select: { products: { where: { active: true } } } },
+      },
+      orderBy: { name: 'asc' },
+    })
+
+    return categories.filter(c => c._count.products > 0)
+  }
+
+  // GET /api/store/:slug/products?categoryId=N
+  async getProducts(request, reply) {
+    const { slug } = request.params
+    const { categoryId } = request.query
+    const account = await resolveSlug(slug, reply)
+    if (!account) return
+
+    const where = { userId: account.userId, active: true }
+    if (categoryId) where.categoryId = Number(categoryId)
+
+    const products = await prisma.product.findMany({
+      where,
+      select: {
+        id: true, name: true, description: true, price: true,
+        imageUrl: true, minOrder: true, categoryId: true,
+        allowInspirationImages: true, inspirationInstruction: true, maxInspirationImages: true,
+        category: { select: { id: true, name: true } },
+      },
+      orderBy: { name: 'asc' },
+    })
+
+    return products
+  }
+
+  // GET /api/store/:slug/delivery-zones — taxas de entrega públicas
+  async getDeliveryZones(request, reply) {
+    const { slug } = request.params
+    const account = await resolveSlug(slug, reply)
+    if (!account) return
+
+    const zones = await prisma.deliveryZone.findMany({
+      where: { userId: account.userId, active: true },
+      select: { id: true, name: true, fee: true },
+      orderBy: { name: 'asc' },
+    })
+    return zones
+  }
+
+  // GET /api/store/:slug/combos
+  async getCombos(request, reply) {
+    const { slug } = request.params
+    const account = await resolveSlug(slug, reply)
+    if (!account) return
+
+    const combos = await prisma.combo.findMany({
+      where: { userId: account.userId, active: true },
+      include: {
+        items: {
+          include: { product: { select: { id: true, name: true, price: true, imageUrl: true } } },
+          orderBy: { sortOrder: 'asc' },
+        },
+      },
+      orderBy: { name: 'asc' },
+    })
+
+    return combos.map(c => {
+      const totalItems = c.items.reduce((sum, i) => sum + Number(i.product.price) * i.quantity, 0)
+      return { ...c, totalPrice: totalItems - Number(c.discount || 0) }
+    })
+  }
+
+  // POST /api/store/:slug/customer/login
+  async customerLogin(request, reply) {
+    const { slug } = request.params
+    const { phone, password } = request.body
+    const account = await resolveSlug(slug, reply)
+    if (!account) return
+
+    if (!phone || !password) {
+      return reply.status(400).send({ error: 'Celular e senha são obrigatórios' })
+    }
+
+    const customer = await prisma.customer.findFirst({
+      where: { userId: account.userId, phone, active: true },
+    })
+
+    if (!customer || !customer.password) {
+      return reply.status(401).send({ error: 'Credenciais inválidas' })
+    }
+
+    const valid = await bcrypt.compare(password, customer.password)
+    if (!valid) {
+      return reply.status(401).send({ error: 'Credenciais inválidas' })
+    }
+
+    const token = request.server.jwt.sign(
+      { customerId: customer.id, userId: account.userId, type: 'customer' },
+      { expiresIn: '30d' },
+    )
+
+    const { password: _, ...safe } = customer
+    return { token, customer: safe }
+  }
+
+  // POST /api/store/:slug/customer/register
+  async customerRegister(request, reply) {
+    const { slug } = request.params
+    const { name, phone, password } = request.body
+    const account = await resolveSlug(slug, reply)
+    if (!account) return
+
+    if (!name || !phone || !password) {
+      return reply.status(400).send({ error: 'Nome, celular e senha são obrigatórios' })
+    }
+    if (password.length < 4) {
+      return reply.status(400).send({ error: 'Senha deve ter no mínimo 4 caracteres' })
+    }
+
+    const exists = await prisma.customer.findFirst({
+      where: { userId: account.userId, phone },
+    })
+    if (exists) {
+      return reply.status(409).send({ error: 'Já existe uma conta com este celular' })
+    }
+
+    const hashed = await bcrypt.hash(password, 10)
+    const customer = await prisma.customer.create({
+      data: { userId: account.userId, name, phone, password: hashed },
+    })
+
+    const token = request.server.jwt.sign(
+      { customerId: customer.id, userId: account.userId, type: 'customer' },
+      { expiresIn: '30d' },
+    )
+
+    const { password: _, ...safe } = customer
+    return reply.status(201).send({ token, customer: safe })
+  }
+
+  // GET /api/store/:slug/customer/me
+  async customerMe(request, reply) {
+    const customer = await prisma.customer.findUnique({
+      where: { id: request.customer.customerId },
+      select: {
+        id: true, name: true, phone: true, email: true,
+        street: true, number: true, complement: true,
+        neighborhood: true, city: true, state: true, zipCode: true, reference: true,
+      },
+    })
+    if (!customer) return reply.status(404).send({ error: 'Cliente não encontrado' })
+    return customer
+  }
+
+  // PUT /api/store/:slug/customer/me
+  async customerUpdateProfile(request, reply) {
+    const { name, email, street, number, complement, neighborhood, city, state, zipCode, reference } = request.body
+    const data = {}
+    if (name !== undefined) data.name = name
+    if (email !== undefined) data.email = email
+    if (street !== undefined) data.street = street
+    if (number !== undefined) data.number = number
+    if (complement !== undefined) data.complement = complement
+    if (neighborhood !== undefined) data.neighborhood = neighborhood
+    if (city !== undefined) data.city = city
+    if (state !== undefined) data.state = state
+    if (zipCode !== undefined) data.zipCode = zipCode
+    if (reference !== undefined) data.reference = reference
+
+    const customer = await prisma.customer.update({
+      where: { id: request.customer.customerId },
+      data,
+      select: {
+        id: true, name: true, phone: true, email: true,
+        street: true, number: true, complement: true,
+        neighborhood: true, city: true, state: true, zipCode: true, reference: true,
+      },
+    })
+    return customer
+  }
+
+  // PUT /api/store/:slug/customer/password
+  async customerChangePassword(request, reply) {
+    const { currentPassword, newPassword } = request.body
+    if (!currentPassword || !newPassword) {
+      return reply.status(400).send({ error: 'Senha atual e nova senha são obrigatórias' })
+    }
+    if (newPassword.length < 4) {
+      return reply.status(400).send({ error: 'Nova senha deve ter no mínimo 4 caracteres' })
+    }
+
+    const customer = await prisma.customer.findUnique({
+      where: { id: request.customer.customerId },
+      select: { password: true },
+    })
+
+    const valid = await bcrypt.compare(currentPassword, customer.password)
+    if (!valid) return reply.status(401).send({ error: 'Senha atual incorreta' })
+
+    const hashed = await bcrypt.hash(newPassword, 10)
+    await prisma.customer.update({
+      where: { id: request.customer.customerId },
+      data: { password: hashed },
+    })
+
+    return { message: 'Senha alterada com sucesso' }
+  }
+
+  // GET /api/store/:slug/availability — datas disponíveis (público)
+  async getAvailability(request, reply) {
+    const { slug } = request.params
+    const account = await resolveSlug(slug, reply)
+    if (!account) return
+
+    const today = new Date()
+    today.setUTCHours(0, 0, 0, 0)
+
+    const endDate = new Date(today)
+    endDate.setDate(endDate.getDate() + 60)
+
+    const slots = await prisma.agendaSlot.findMany({
+      where: {
+        userId: account.userId,
+        active: true,
+        date: { gte: today, lte: endDate },
+      },
+      orderBy: { date: 'asc' },
+    })
+
+    return slots
+      .filter(s => s.currentOrders < s.maxOrders)
+      .map(s => ({
+        date: s.date.toISOString().slice(0, 10),
+        remaining: s.maxOrders - s.currentOrders,
+      }))
+  }
+
+  // POST /api/store/:slug/orders
+  async createOrder(request, reply) {
+    const { items, deliveryAddress, deliveryType, notes, estimatedDeliveryDate, deliveryFee, deliveryZoneId } = request.body
+    const { customerId, userId } = request.customer
+
+    if (!items || !items.length) {
+      return reply.status(400).send({ error: 'Adicione pelo menos um item' })
+    }
+
+    // Validar data de agendamento se fornecida
+    let agendaSlot = null
+    if (estimatedDeliveryDate) {
+      const datePart = estimatedDeliveryDate.split('|')[0]
+      const dateObj = new Date(datePart + 'T00:00:00.000Z')
+      agendaSlot = await prisma.agendaSlot.findFirst({
+        where: { userId, date: dateObj, active: true },
+      })
+      if (!agendaSlot) {
+        return reply.status(400).send({ error: 'Data selecionada não está disponível na agenda' })
+      }
+      if (agendaSlot.currentOrders >= agendaSlot.maxOrders) {
+        return reply.status(400).send({ error: 'Data selecionada está lotada. Escolha outra data.' })
+      }
+    }
+
+    const customer = await prisma.customer.findUnique({
+      where: { id: customerId },
+      select: { name: true, phone: true },
+    })
+
+    const productIds = items.map(i => i.productId)
+    const products = await prisma.product.findMany({
+      where: { id: { in: productIds }, userId, active: true },
+    })
+
+    if (products.length !== productIds.length) {
+      return reply.status(400).send({ error: 'Um ou mais produtos não encontrados' })
+    }
+
+    const orderItems = items.map(item => {
+      const product = products.find(p => p.id === item.productId)
+      return {
+        productId: item.productId,
+        quantity: item.quantity,
+        price: product.price,
+        _attachments: item.attachments || [],
+      }
+    })
+
+    const total = orderItems.reduce((sum, item) => sum + Number(item.price) * item.quantity, 0)
+
+    // Calcula valor de reserva se a conta usa reserva
+    const account = await prisma.account.findUnique({
+      where: { userId },
+      select: { useReservation: true, reservationPercent: true },
+    })
+    const totalWithFee = deliveryFee ? total + Number(deliveryFee) : total
+    const reservationValue = (account?.useReservation && account?.reservationPercent > 0)
+      ? Math.round(totalWithFee * account.reservationPercent) / 100
+      : null
+
+    // Formatar data para exibição (dd/mm/yyyy às HH:mm)
+    let deliveryDateDisplay = null
+    if (estimatedDeliveryDate) {
+      const [datePart, timePart] = estimatedDeliveryDate.split('|')
+      const [y, m, d] = datePart.split('-')
+      deliveryDateDisplay = `${d}/${m}/${y}`
+      if (timePart) deliveryDateDisplay += ` às ${timePart}`
+    }
+
+    const lastOrder = await prisma.order.findFirst({
+      where: { userId },
+      orderBy: { orderNumber: 'desc' },
+      select: { orderNumber: true },
+    })
+    const nextOrderNumber = (lastOrder?.orderNumber || 0) + 1
+
+    const order = await prisma.order.create({
+      data: {
+        userId,
+        orderNumber: nextOrderNumber,
+        customerId,
+        customerName: customer.name,
+        customerPhone: customer.phone,
+        deliveryAddress: deliveryAddress || null,
+        deliveryType: deliveryType || null,
+        notes: notes || null,
+        estimatedDeliveryDate: deliveryDateDisplay,
+        total: totalWithFee,
+        deliveryFee: deliveryFee ? Number(deliveryFee) : null,
+        ...(reservationValue !== null ? { reservation: reservationValue, depositAmount: reservationValue } : {}),
+        items: {
+          create: orderItems.map(({ _attachments, ...item }) => item),
+        },
+      },
+      include: { items: { include: { product: true } } },
+    })
+
+    // Criar attachments separadamente
+    for (const orderItem of order.items) {
+      const original = orderItems.find(oi => oi.productId === orderItem.productId)
+      if (original?._attachments?.length) {
+        await prisma.orderItemAttachment.createMany({
+          data: original._attachments.map(a => ({
+            orderItemId: orderItem.id,
+            imageUrl: a.imageUrl,
+            description: a.description || null,
+          })),
+        })
+      }
+    }
+
+    // Recarregar com attachments
+    const fullOrder = await prisma.order.findUnique({
+      where: { id: order.id },
+      include: { items: { include: { product: true, attachments: true } } },
+    })
+
+    // Incrementar contador da agenda
+    if (agendaSlot) {
+      await prisma.agendaSlot.update({
+        where: { id: agendaSlot.id },
+        data: { currentOrders: { increment: 1 } },
+      })
+    }
+
+    return reply.status(201).send(fullOrder)
+  }
+
+  // GET /api/store/:slug/customer/orders
+  async listMyOrders(request, reply) {
+    const { customerId, userId } = request.customer
+
+    const orders = await prisma.order.findMany({
+      where: { customerId, userId },
+      include: {
+        items: { include: { product: { select: { id: true, name: true, imageUrl: true } }, attachments: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    })
+
+    return orders
+  }
+
+  // POST /api/store/:slug/upload — upload de imagem de inspiração (customer auth)
+  async uploadInspirationImage(request, reply) {
+    const { slug } = request.params
+    const account = await prisma.account.findFirst({
+      where: { slug, storeActive: true },
+      select: { id: true },
+    })
+    if (!account) return reply.status(404).send({ error: 'Loja não encontrada' })
+
+    const file = await request.file()
+    if (!file) return reply.status(400).send({ error: 'Nenhum arquivo enviado' })
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+    if (!allowedTypes.includes(file.mimetype)) {
+      return reply.status(400).send({ error: 'Tipo não permitido. Use JPEG, PNG, WebP ou GIF.' })
+    }
+
+    const folder = AccountService.getUploadFolder(account.id, 'inspirations')
+    const result = await UploadService.uploadFile(file, folder)
+    return reply.status(201).send(result)
+  }
+
+  // POST /api/store/:slug/validate-images — valida imagens de inspiração com IA
+  async validateInspirationImages(request, reply) {
+    const { images, productName } = request.body
+    // images: [{ imageUrl }], productName: string
+
+    if (!images?.length || !productName) {
+      return reply.status(400).send({ error: 'Imagens e nome do produto são obrigatórios' })
+    }
+
+    try {
+      const content = [
+        {
+          type: 'text',
+          text: `Você é um validador de imagens de inspiração para pedidos de confeitaria/doceria.
+
+O cliente está fazendo um pedido de: "${productName}"
+Ele enviou ${images.length} imagem(ns) de inspiração/referência.
+
+Analise CADA imagem e verifique se:
+1. A imagem é relacionada a confeitaria, doces, bolos, decoração de festas ou alimentos em geral
+2. A imagem NÃO contém conteúdo impróprio, ofensivo ou completamente irrelevante (ex: memes, screenshots aleatórios, conteúdo adulto)
+
+Responda APENAS com um JSON válido neste formato:
+{"approved": true/false, "message": "mensagem curta em português explicando o resultado"}
+
+Se TODAS as imagens forem apropriadas como referência para confeitaria, aprove.
+Se alguma imagem for claramente irrelevante ou imprópria, rejeite e explique qual imagem e por quê.
+Seja tolerante — aceite imagens de paletas de cores, decorações, temas de festa, personagens (para bolos temáticos), etc.`,
+        },
+      ]
+
+      for (const img of images) {
+        content.push({ type: 'image_url', image_url: { url: img.imageUrl } })
+      }
+
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content }],
+        max_tokens: 200,
+        temperature: 0.3,
+      })
+
+      const text = response.choices[0]?.message?.content?.trim() || ''
+      // Extrair JSON da resposta
+      const jsonMatch = text.match(/\{[\s\S]*\}/)
+      if (jsonMatch) {
+        const result = JSON.parse(jsonMatch[0])
+        return { approved: !!result.approved, message: result.message || '' }
+      }
+
+      return { approved: true, message: 'Imagens validadas' }
+    } catch (err) {
+      console.error('Erro ao validar imagens:', err.message)
+      // Em caso de erro na IA, aprovar para não bloquear o pedido
+      return { approved: true, message: 'Validação indisponível, imagens aceitas' }
+    }
+  }
+
+  // POST /api/store/:slug/orders/:orderId/payment-proof — upload comprovante PIX
+  async uploadPaymentProof(request, reply) {
+    const { slug, orderId } = request.params
+    const { customerId, userId } = request.customer
+
+    const order = await prisma.order.findFirst({
+      where: { id: Number(orderId), customerId, userId },
+    })
+    if (!order) return reply.status(404).send({ error: 'Pedido não encontrado' })
+
+    if (order.proofVerified) {
+      return reply.status(400).send({ error: 'Comprovante já foi verificado' })
+    }
+
+    const account = await prisma.account.findFirst({
+      where: { slug, storeActive: true },
+      select: { id: true },
+    })
+    if (!account) return reply.status(404).send({ error: 'Loja não encontrada' })
+
+    const file = await request.file()
+    if (!file) return reply.status(400).send({ error: 'Nenhum arquivo enviado' })
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
+    if (!allowedTypes.includes(file.mimetype)) {
+      return reply.status(400).send({ error: 'Tipo não permitido. Use JPEG, PNG, WebP ou PDF.' })
+    }
+
+    // Lê o buffer antes do upload para poder enviar à IA
+    const fileBuffer = await file.toBuffer()
+    console.log(`[Comprovante] Pedido #${order.id} - Buffer size: ${fileBuffer.length} bytes, mimetype: ${file.mimetype}`)
+
+    const folder = AccountService.getUploadFolder(account.id, 'payment-proofs')
+    const result = await UploadService.uploadBuffer(fileBuffer, file.mimetype, folder)
+
+    // Valor esperado: reservation (valor real da reserva) ou total
+    const expectedAmount = order.reservation ? Number(order.reservation) : Number(order.total)
+
+    // Análise do comprovante via IA (apenas para imagens)
+    let proofAmount = null
+    let valueDivergent = false
+    let aiMessage = null
+
+    console.log(`[Comprovante IA] Mimetype: ${file.mimetype} | isImage: ${file.mimetype.startsWith('image/')}`)
+    if (file.mimetype.startsWith('image/')) {
+      try {
+        const base64 = fileBuffer.toString('base64')
+        const dataUrl = `data:${file.mimetype};base64,${base64}`
+
+        const aiResponse = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          max_tokens: 200,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: 'Analise esta imagem de comprovante de pagamento PIX/transferência bancária. Extraia APENAS o valor da transação em reais. Responda SOMENTE com o número decimal (ex: 46.80). Se não conseguir identificar o valor, responda "0".',
+                },
+                {
+                  type: 'image_url',
+                  image_url: { url: dataUrl, detail: 'low' },
+                },
+              ],
+            },
+          ],
+        })
+
+        const extracted = aiResponse.choices?.[0]?.message?.content?.trim()
+        console.log(`[Comprovante IA] Pedido #${order.id} - Resposta: "${extracted}" | Esperado: R$ ${expectedAmount.toFixed(2)}`)
+        const parsed = parseFloat(extracted?.replace(',', '.'))
+        if (!isNaN(parsed) && parsed > 0) {
+          proofAmount = parsed
+        }
+      } catch (err) {
+        console.error('Erro ao analisar comprovante via IA:', err.message)
+      }
+    }
+
+    // Verifica divergência de valor (mesma lógica do WhatsApp)
+    if (proofAmount !== null && expectedAmount > 0) {
+      const diff = Math.abs(proofAmount - expectedAmount)
+      if (diff > 0.50) {
+        valueDivergent = true
+        if (proofAmount > expectedAmount) {
+          aiMessage = `Parece que seu comprovante de pagamento tem o valor diferente do esperado (R$ ${expectedAmount.toFixed(2)}), mas fique tranquilo, nossa equipe irá verificar e responder.`
+        } else {
+          aiMessage = `O valor do comprovante (R$ ${proofAmount.toFixed(2)}) parece diferente do valor esperado (R$ ${expectedAmount.toFixed(2)}). Fique tranquilo, nossa equipe irá verificar e responder.`
+        }
+      }
+    }
+
+    const updated = await prisma.order.update({
+      where: { id: order.id },
+      data: {
+        paymentProof: result.url,
+        status: 'RESERVATION',
+        ...(proofAmount !== null ? { depositAmount: proofAmount } : {}),
+        ...(valueDivergent ? { depositDivergence: true } : {}),
+      },
+      select: { id: true, paymentProof: true, proofVerified: true, depositAmount: true, depositDivergence: true, status: true },
+    })
+
+    // Notificar confeiteiro via WhatsApp (instância do sistema)
+    try {
+      const owner = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { phone: true, name: true },
+      })
+      const customer = await prisma.customer.findUnique({
+        where: { id: customerId },
+        select: { name: true, phone: true },
+      })
+
+      if (owner?.phone) {
+        const instance = await prisma.instance.findFirst({
+          where: { instanceName: 'ZapCakes-System', status: 'CONNECTED' },
+        })
+        if (instance) {
+          const phoneDigits = owner.phone.replace(/\D/g, '')
+          const whatsappNumber = phoneDigits.startsWith('55') ? phoneDigits : `55${phoneDigits}`
+          const depositValue = proofAmount !== null ? proofAmount : (order.reservation ? Number(order.reservation) : Number(order.total))
+          const divergenceWarning = valueDivergent ? '\n*Atenção:* Valor do comprovante divergente do esperado!' : ''
+
+          const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173'
+          const orderCode = String(order.orderNumber).padStart(5, '0')
+          const orderLink = `${frontendUrl}/client/orders/${orderCode}`
+
+          const msg = `*Novo comprovante de reserva recebido!*\n\n` +
+            `*Pedido #${orderCode}*\n` +
+            `*Cliente:* ${customer?.name || 'N/A'}\n` +
+            `*Celular:* ${customer?.phone || 'N/A'}\n` +
+            `*Valor da reserva:* R$ ${depositValue.toFixed(2).replace('.', ',')}\n` +
+            `*Total do pedido:* R$ ${Number(order.total).toFixed(2).replace('.', ',')}` +
+            `${divergenceWarning}\n\n` +
+            `Acesse o pedido: ${orderLink}`
+
+          await evolutionApi.post(`/message/sendText/${instance.instanceName}`, {
+            number: whatsappNumber,
+            text: msg,
+          })
+        }
+      }
+    } catch (err) {
+      console.error('[Comprovante] Erro ao notificar confeiteiro via WhatsApp:', err.message)
+    }
+
+    return reply.status(201).send({
+      ...updated,
+      aiMessage: aiMessage || (proofAmount !== null
+        ? `Comprovante recebido! Valor identificado: R$ ${proofAmount.toFixed(2)}. Aguarde a verificação da loja.`
+        : 'Comprovante enviado! Aguarde a verificação da loja.'),
+      valueDivergent,
+    })
+  }
+}

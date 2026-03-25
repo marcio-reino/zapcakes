@@ -45,7 +45,7 @@ export default function Features() {
       <div className="max-w-7xl mx-auto px-6">
         <div className="text-center max-w-xl mx-auto mb-14">
           <span className="inline-block px-4 py-1.5 text-sm font-semibold text-primary-700 bg-primary-100 rounded-full mb-4">
-            Tudo que você precisa
+            Tudo o que você precisa
           </span>
           <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-3">
             Recursos poderosos, interface simples

@@ -24,6 +24,24 @@ export class UploadService {
     return { url, key }
   }
 
+  static async uploadBuffer(buffer, mimetype, folder = 'uploads') {
+    const extMap = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'application/pdf': '.pdf' }
+    const ext = extMap[mimetype] || '.bin'
+    const key = `${folder}/${randomUUID()}${ext}`
+
+    await s3Client.send(
+      new PutObjectCommand({
+        Bucket: S3_BUCKET,
+        Key: key,
+        Body: buffer,
+        ContentType: mimetype,
+      })
+    )
+
+    const url = `${process.env.S3_ENDPOINT}/${S3_BUCKET}/${key}`
+    return { url, key }
+  }
+
   static async deleteFile(key) {
     await s3Client.send(
       new DeleteObjectCommand({

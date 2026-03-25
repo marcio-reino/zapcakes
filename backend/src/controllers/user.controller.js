@@ -64,7 +64,7 @@ export class UserController {
     if (email) data.email = email
     if (phone !== undefined) data.phone = phone
     if (active !== undefined) data.active = active
-    if (role && request.user.role === 'ADMIN') data.role = role
+    if (role && (request.user.role === 'ADMIN' || request.user.role === 'SUPERADMIN')) data.role = role
     if (password) data.password = await bcrypt.hash(password, 10)
     if (street !== undefined) data.street = street
     if (number !== undefined) data.number = number

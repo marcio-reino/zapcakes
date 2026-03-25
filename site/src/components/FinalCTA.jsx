@@ -1,5 +1,8 @@
 import { HiArrowRight } from 'react-icons/hi'
 
+const LOGIN_URL = import.meta.env.VITE_LOGIN_URL || '/login'
+const REGISTER_URL = `${LOGIN_URL}?mode=register`
+
 export default function FinalCTA() {
   return (
     <section className="py-24 bg-gradient-to-br from-primary-600 via-primary-700 to-primary-800 text-center relative overflow-hidden">
@@ -13,7 +16,9 @@ export default function FinalCTA() {
           Junte-se a dezenas de confeiteiras que já trabalham com mais tranquilidade e vendem mais todos os dias.
         </p>
         <a
-          href="#preco"
+          href={REGISTER_URL}
+          target="_blank"
+          rel="noopener noreferrer"
           className="reveal reveal-delay-2 inline-flex items-center gap-2 px-10 py-4 bg-white text-primary-700 font-bold rounded-xl shadow-xl hover:-translate-y-0.5 hover:shadow-2xl transition-all text-base"
         >
           Começar Grátis Agora

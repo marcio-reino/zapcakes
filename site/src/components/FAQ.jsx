@@ -8,7 +8,7 @@ const faqs = [
   },
   {
     q: 'O ZapCakes funciona com meu WhatsApp pessoal?',
-    a: 'Sim! O ZapCakes se conecta ao seu WhatsApp existente. Seus clientes continuam mandando mensagem para o mesmo número de sempre.',
+    a: 'Sim! O ZapCakes se conecta ao seu WhatsApp Business existente. Seus clientes continuam mandando mensagem para o mesmo número de sempre.',
   },
   {
     q: 'E se o cliente quiser falar com uma pessoa de verdade?',
@@ -40,7 +40,7 @@ export default function FAQ() {
             return (
               <div
                 key={i}
-                className={`reveal reveal-delay-${(i % 3) + 1} rounded-xl border overflow-hidden transition-all duration-300 ${
+                className={`rounded-xl border overflow-hidden transition-all duration-300 ${
                   isOpen ? 'border-primary-400 shadow-md bg-white' : 'border-gray-200 bg-white hover:border-primary-300'
                 }`}
               >

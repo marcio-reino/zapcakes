@@ -10,6 +10,7 @@ import { sendMail } from '../services/mail.service.js'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const resetTemplate = readFileSync(join(__dirname, '../templates/reset-password.html'), 'utf-8')
 const activationTemplate = readFileSync(join(__dirname, '../templates/activation-code.html'), 'utf-8')
+const welcomeTemplate = readFileSync(join(__dirname, '../templates/welcome.html'), 'utf-8')
 
 // Armazena tokens temporários: { token: { userId, expiresAt } }
 const resetTokens = new Map()
@@ -39,7 +40,7 @@ export class AuthController {
   async login(request, reply) {
     const { email, password } = request.body
 
-    const user = await prisma.user.findUnique({ where: { email } })
+    const user = await prisma.user.findUnique({ where: { email }, include: { account: true } })
     if (!user) {
       return reply.status(401).send({ error: 'Credenciais inválidas' })
     }
@@ -50,6 +51,11 @@ export class AuthController {
     }
 
     if (!user.active) {
+      // Se já possui account, foi desativado pelo administrador
+      if (user.account) {
+        return reply.status(403).send({ error: 'Conta desativada temporariamente' })
+      }
+
       // Reenvia código de ativação automaticamente
       const code = generateCode()
       const expiresAt = Date.now() + 10 * 60 * 1000
@@ -128,6 +134,22 @@ export class AuthController {
     })
 
     activationCodes.delete(email)
+
+    // Envia e-mail de boas-vindas sem bloquear
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173'
+    const welcomeHtml = welcomeTemplate
+      .replace(/\{\{NAME\}\}/g, user.name)
+      .replace(/\{\{LOGIN_URL\}\}/g, frontendUrl)
+      .replace(/\{\{YEAR\}\}/g, String(new Date().getFullYear()))
+
+    sendMail({
+      to: user.email,
+      subject: 'Bem-vindo ao ZapCakes! 🎉',
+      html: welcomeHtml,
+      text: `Olá ${user.name}, sua conta foi ativada com sucesso! Acesse seu painel em: ${frontendUrl}`,
+    }).catch(err => {
+      console.error('Erro ao enviar e-mail de boas-vindas:', err.message)
+    })
 
     const token = request.server.jwt.sign(
       { id: user.id, email: user.email, role: user.role },

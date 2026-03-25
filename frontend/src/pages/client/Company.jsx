@@ -33,10 +33,21 @@ function maskCelular(v) {
   return n.replace(/(\d{2})(\d{5})(\d{0,4})/, '($1) $2-$3')
 }
 
+function formatBRL(value) {
+  const num = String(value).replace(/\D/g, '')
+  const cents = (Number(num) / 100).toFixed(2)
+  return Number(cents).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+function parseBRL(formatted) {
+  const num = String(formatted).replace(/\./g, '').replace(',', '.')
+  return parseFloat(num) || 0
+}
+
 export default function Company() {
   const [form, setForm] = useState({
     companyName: '', legalName: '', document: '', documentType: '',
-    logoUrl: '', responsible: '', phone: '',
+    logoUrl: '', responsible: '', phone: '', hourlyRate: '', useReservation: false, reservationPercent: '',
     street: '', number: '', complement: '', neighborhood: '',
     city: '', state: '', zipCode: '', reference: '',
   })
@@ -57,6 +68,9 @@ export default function Company() {
         logoUrl: data.logoUrl || '',
         responsible: data.responsible || '',
         phone: data.phone || '',
+        hourlyRate: data.hourlyRate ? formatBRL(String(Math.round(Number(data.hourlyRate) * 100))) : '',
+        useReservation: data.useReservation || false,
+        reservationPercent: data.reservationPercent || '',
         street: data.street || '',
         number: data.number || '',
         complement: data.complement || '',
@@ -119,7 +133,12 @@ export default function Company() {
         logoUrl = upload.url
       }
 
-      await api.put('/company', { ...form, logoUrl })
+      await api.put('/company', {
+        ...form,
+        logoUrl,
+        hourlyRate: parseBRL(form.hourlyRate),
+        reservationPercent: form.useReservation && form.reservationPercent ? Number(form.reservationPercent) : null,
+      })
       setForm((f) => ({ ...f, logoUrl }))
       setLogoFile(null)
       toast.success('Dados salvos com sucesso!')
@@ -141,8 +160,8 @@ export default function Company() {
 
   const mapUrl = getMapUrl()
 
-  const inputClass = 'w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-pink-500 focus:border-transparent outline-none text-sm'
-  const labelClass = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1'
+  const inputClass = 'w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-pink-500 focus:border-transparent outline-none text-base md:text-sm'
+  const labelClass = 'block text-base md:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1'
 
   return (
     <div className="max-w-4xl">
@@ -151,9 +170,9 @@ export default function Company() {
         <button
           onClick={handleSave}
           disabled={saving}
-          className="flex items-center gap-2 px-5 py-2.5 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition-colors disabled:opacity-50 text-sm font-medium"
+          className="flex items-center gap-2 px-6 py-3 md:px-5 md:py-2.5 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition-colors disabled:opacity-50 text-base md:text-sm font-medium"
         >
-          <FiSave size={16} /> {saving ? 'Salvando...' : 'Salvar'}
+          <FiSave className="w-5 h-5 md:w-4 md:h-4" /> {saving ? 'Salvando...' : 'Salvar'}
         </button>
       </div>
 
@@ -236,6 +255,57 @@ export default function Company() {
                 placeholder="(22) 99999-9999"
                 className={inputClass}
               />
+              <span className="text-xs text-gray-400 mt-1 block">Deve ser o número de celular utilizado para atendimento humanizado</span>
+            </div>
+            <div>
+              <label className={labelClass}>Valor da Hora de Trabalho (R$)</label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 text-base md:text-sm">R$</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={form.hourlyRate}
+                  onChange={(e) => setField('hourlyRate', formatBRL(e.target.value))}
+                  placeholder="0,00"
+                  className={`${inputClass} pl-10`}
+                />
+              </div>
+              <span className="text-xs text-gray-400 mt-1 block">Usado no cálculo de custo das receitas</span>
+            </div>
+            <div className="md:col-span-2">
+              <div className="flex items-center gap-3 mb-2">
+                <button
+                  type="button"
+                  onClick={() => setField('useReservation', !form.useReservation)}
+                  className={`relative w-11 h-6 rounded-full transition-colors ${form.useReservation ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+                >
+                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${form.useReservation ? 'translate-x-5' : ''}`} />
+                </button>
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Trabalha com valor de reserva</label>
+              </div>
+              {form.useReservation && (
+                <div className="flex items-center gap-3 mt-2">
+                  <label className="text-sm text-gray-500 dark:text-gray-400">Porcentagem da reserva</label>
+                  <div className="relative w-32">
+                    <input
+                      type="number"
+                      min="5"
+                      max="50"
+                      value={form.reservationPercent}
+                      onChange={(e) => {
+                        let v = e.target.value
+                        if (v !== '' && Number(v) > 50) v = '50'
+                        if (v !== '' && Number(v) < 0) v = '0'
+                        setField('reservationPercent', v)
+                      }}
+                      placeholder="5 a 50"
+                      className={`${inputClass} pr-8 text-center`}
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 text-sm">%</span>
+                  </div>
+                  <span className="text-xs text-gray-400">Entre 5% e 50%</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -330,11 +400,11 @@ export default function Company() {
             </div>
             <div>
               <label className={labelClass}>Ponto de Referência</label>
-              <input
-                type="text"
+              <textarea
                 value={form.reference}
                 onChange={(e) => setField('reference', e.target.value)}
                 placeholder="Próximo a..."
+                rows={3}
                 className={inputClass}
               />
             </div>

@@ -114,7 +114,33 @@ export default function AdminCategories() {
         confirmText="Remover"
       />
 
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
+      {/* Mobile: Cards */}
+      <div className="md:hidden space-y-3">
+        {categories.map((c) => (
+          <div key={c.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4">
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{c.name}</h3>
+                <p className="text-base text-gray-500 dark:text-gray-400 mt-1">{c._count?.products || 0} produtos</p>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => startEdit(c)} className="p-3 bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-400 dark:hover:bg-gray-600 rounded-lg transition-colors">
+                  <FiEdit2 size={20} />
+                </button>
+                <button onClick={() => setDeleteId(c.id)} className="p-3 bg-gray-100 text-gray-500 hover:bg-red-100 hover:text-red-600 dark:bg-gray-700 dark:text-gray-400 dark:hover:bg-red-900/30 dark:hover:text-red-400 rounded-lg transition-colors">
+                  <FiTrash2 size={20} />
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+        {categories.length === 0 && (
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm px-6 py-8 text-center text-gray-400">Nenhuma categoria encontrada</div>
+        )}
+      </div>
+
+      {/* Desktop: Table */}
+      <div className="hidden md:block bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
         <table className="w-full">
           <thead className="bg-gray-50 dark:bg-gray-700">
             <tr>

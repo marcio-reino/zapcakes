@@ -186,42 +186,44 @@ export default function AdminAgent() {
   if (loading) return <p className="dark:text-gray-300">Carregando...</p>
 
   return (
-    <div className="h-full flex flex-col -m-8">
-      <div className="flex justify-between items-center px-8 py-4 bg-gray-100 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shrink-0 z-10">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800 dark:text-white">Agente de Atendimento</h1>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Configure as instruções do agente por categoria</p>
-        </div>
-        <div className="flex items-center gap-3">
-          {whatsappStatus === 'CONNECTED' ? (
+    <div className="h-full flex flex-col -m-4 -mt-4 md:-m-8">
+      <div className="px-4 md:px-8 py-4 bg-gray-100 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shrink-0 z-10">
+        <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-3">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-800 dark:text-white">Agente de Atendimento</h1>
+            <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Configure as instruções do agente por categoria</p>
+          </div>
+          <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-3">
+            {whatsappStatus === 'CONNECTED' ? (
+              <button
+                onClick={handleDisconnectWhatsApp}
+                className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 md:py-2.5 rounded-lg transition-colors text-lg md:text-sm"
+              >
+                <FiWifi size={18} />
+                Conectado
+              </button>
+            ) : (
+              <button
+                onClick={handleConnectWhatsApp}
+                disabled={connecting}
+                className="flex items-center justify-center gap-2 bg-gray-600 hover:bg-gray-700 text-white px-4 py-3 md:py-2.5 rounded-lg transition-colors disabled:opacity-50 text-lg md:text-sm"
+              >
+                <FiSmartphone size={18} />
+                {connecting ? 'Conectando...' : 'Conectar WhatsApp'}
+              </button>
+            )}
             <button
-              onClick={handleDisconnectWhatsApp}
-              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-lg transition-colors"
+              onClick={() => openNew()}
+              className="flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-3 md:py-2.5 rounded-lg transition-colors text-lg md:text-sm"
             >
-              <FiWifi size={18} />
-              Conectado
+              <FiPlus size={18} />
+              Nova Instrução
             </button>
-          ) : (
-            <button
-              onClick={handleConnectWhatsApp}
-              disabled={connecting}
-              className="flex items-center gap-2 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2.5 rounded-lg transition-colors disabled:opacity-50"
-            >
-              <FiSmartphone size={18} />
-              {connecting ? 'Conectando...' : 'Conectar WhatsApp'}
-            </button>
-          )}
-          <button
-            onClick={() => openNew()}
-            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-lg transition-colors"
-          >
-            <FiPlus size={18} />
-            Nova Instrução
-          </button>
+          </div>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-8 space-y-6">
+      <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
         {CATEGORIES.map((cat) => {
           const items = getByCategory(cat.value)
           const Icon = cat.icon
@@ -239,9 +241,9 @@ export default function AdminAgent() {
                 </div>
                 <button
                   onClick={() => openNew(cat.value)}
-                  className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-300 hover:text-green-600 dark:hover:text-green-400 transition-colors"
+                  className="flex items-center gap-1.5 transition-colors bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 px-3 py-2 rounded-lg text-base md:bg-transparent md:dark:bg-transparent md:text-gray-600 md:dark:text-gray-300 md:hover:text-green-600 md:dark:hover:text-green-400 md:hover:bg-transparent md:dark:hover:bg-transparent md:px-0 md:py-0 md:rounded-none md:text-sm"
                 >
-                  <FiPlus size={16} />
+                  <FiPlus className="w-5 h-5 md:w-4 md:h-4" />
                   Adicionar
                 </button>
               </div>
@@ -251,72 +253,97 @@ export default function AdminAgent() {
                   {items.map((instruction, idx) => (
                     <div
                       key={instruction.id}
-                      className={`flex items-start gap-4 px-5 py-3.5 ${idx > 0 ? 'border-t border-inherit' : ''} bg-white/60 dark:bg-gray-800/60`}
+                      className={`px-5 py-3.5 ${idx > 0 ? 'border-t border-inherit' : ''} bg-white/60 dark:bg-gray-800/60`}
                     >
-                      {instruction.imageUrl && (() => {
-                        const url = instruction.imageUrl.toLowerCase()
-                        if (url.match(/\.pdf(\?|$)/)) {
-                          return <div className="w-12 h-12 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 flex items-center justify-center shrink-0"><FiFile size={20} className="text-red-500" /></div>
-                        }
-                        if (url.match(/\.(mp3|mpeg|ogg)(\?|$)/)) {
-                          const isPlaying = playingAudio === instruction.id
-                          return (
-                            <button
-                              type="button"
-                              onClick={(e) => { e.stopPropagation(); toggleAudio(instruction.id, instruction.imageUrl) }}
-                              className={`w-12 h-12 rounded-lg border flex items-center justify-center shrink-0 transition-all ${
-                                isPlaying
-                                  ? 'bg-blue-500 border-blue-500 shadow-md shadow-blue-500/30'
-                                  : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/40'
-                              }`}
-                            >
-                              {isPlaying
-                                ? <FiPause size={18} className="text-white" />
-                                : <FiPlay size={18} className="text-blue-500 ml-0.5" />
-                              }
-                            </button>
-                          )
-                        }
-                        return <img src={instruction.imageUrl} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" />
-                      })()}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h3 className={`font-medium ${instruction.active ? 'text-gray-800 dark:text-white' : 'text-gray-400 dark:text-gray-500 line-through'}`}>
-                            {instruction.title}
-                          </h3>
-                          {instruction.imageUrl && !instruction.imageUrl.startsWith('blob:') && (() => {
-                            const url = instruction.imageUrl.toLowerCase()
-                            if (url.match(/\.pdf(\?|$)/)) return <FiFile size={14} className="text-red-400" />
-                            if (url.match(/\.(mp3|mpeg|ogg)(\?|$)/)) return <FiMusic size={14} className="text-blue-400" />
-                            return <FiImage size={14} className="text-gray-400" />
-                          })()}
-                          {!instruction.active && (
-                            <span className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 px-2 py-0.5 rounded-full">Inativa</span>
-                          )}
+                      <div className="flex items-start gap-4">
+                        {instruction.imageUrl && (() => {
+                          const url = instruction.imageUrl.toLowerCase()
+                          if (url.match(/\.pdf(\?|$)/)) {
+                            return <div className="w-12 h-12 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 flex items-center justify-center shrink-0"><FiFile size={20} className="text-red-500" /></div>
+                          }
+                          if (url.match(/\.(mp3|mpeg|ogg)(\?|$)/)) {
+                            const isPlaying = playingAudio === instruction.id
+                            return (
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); toggleAudio(instruction.id, instruction.imageUrl) }}
+                                className={`w-12 h-12 rounded-lg border flex items-center justify-center shrink-0 transition-all ${
+                                  isPlaying
+                                    ? 'bg-blue-500 border-blue-500 shadow-md shadow-blue-500/30'
+                                    : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/40'
+                                }`}
+                              >
+                                {isPlaying
+                                  ? <FiPause size={18} className="text-white" />
+                                  : <FiPlay size={18} className="text-blue-500 ml-0.5" />
+                                }
+                              </button>
+                            )
+                          }
+                          return <img src={instruction.imageUrl} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" />
+                        })()}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <h3 className={`font-medium ${instruction.active ? 'text-gray-800 dark:text-white' : 'text-gray-400 dark:text-gray-500 line-through'}`}>
+                              {instruction.title}
+                            </h3>
+                            {instruction.imageUrl && !instruction.imageUrl.startsWith('blob:') && (() => {
+                              const url = instruction.imageUrl.toLowerCase()
+                              if (url.match(/\.pdf(\?|$)/)) return <FiFile size={14} className="text-red-400" />
+                              if (url.match(/\.(mp3|mpeg|ogg)(\?|$)/)) return <FiMusic size={14} className="text-blue-400" />
+                              return <FiImage size={14} className="text-gray-400" />
+                            })()}
+                            {!instruction.active && (
+                              <span className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 px-2 py-0.5 rounded-full">Inativa</span>
+                            )}
+                          </div>
+                          <p className={`text-sm mt-1 line-clamp-2 ${instruction.active ? 'text-gray-500 dark:text-gray-400' : 'text-gray-400 dark:text-gray-600'}`}>
+                            {instruction.content}
+                          </p>
                         </div>
-                        <p className={`text-sm mt-1 line-clamp-2 ${instruction.active ? 'text-gray-500 dark:text-gray-400' : 'text-gray-400 dark:text-gray-600'}`}>
-                          {instruction.content}
-                        </p>
+                        {/* Desktop: botões ao lado */}
+                        <div className="hidden md:flex items-center gap-1 shrink-0">
+                          <button
+                            onClick={() => toggleActive(instruction)}
+                            className={`p-2 rounded-lg transition-colors ${instruction.active ? 'bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-400 dark:hover:bg-gray-600' : 'bg-gray-100 text-gray-300 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-600 dark:hover:bg-gray-600'}`}
+                            title={instruction.active ? 'Desativar' : 'Ativar'}
+                          >
+                            <FiCheckCircle size={17} />
+                          </button>
+                          <button
+                            onClick={() => startEdit(instruction)}
+                            className="p-2 bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-400 dark:hover:bg-gray-600 rounded-lg transition-colors"
+                          >
+                            <FiEdit2 size={17} />
+                          </button>
+                          <button
+                            onClick={() => setDeleteId(instruction.id)}
+                            className="p-2 bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-400 dark:hover:bg-gray-600 rounded-lg transition-colors"
+                          >
+                            <FiTrash2 size={17} />
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1 shrink-0">
+                      {/* Mobile: botões abaixo */}
+                      <div className="flex md:hidden items-center gap-2 mt-3 justify-end">
                         <button
                           onClick={() => toggleActive(instruction)}
-                          className={`p-2 rounded-lg transition-colors ${instruction.active ? 'bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-400 dark:hover:bg-gray-600' : 'bg-gray-100 text-gray-300 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-600 dark:hover:bg-gray-600'}`}
+                          className={`p-3 rounded-lg transition-colors ${instruction.active ? 'bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-400 dark:hover:bg-gray-600' : 'bg-gray-100 text-gray-300 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-600 dark:hover:bg-gray-600'}`}
                           title={instruction.active ? 'Desativar' : 'Ativar'}
                         >
-                          <FiCheckCircle size={17} />
+                          <FiCheckCircle size={20} />
                         </button>
                         <button
                           onClick={() => startEdit(instruction)}
-                          className="p-2 bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-400 dark:hover:bg-gray-600 rounded-lg transition-colors"
+                          className="p-3 bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-400 dark:hover:bg-gray-600 rounded-lg transition-colors"
                         >
-                          <FiEdit2 size={17} />
+                          <FiEdit2 size={20} />
                         </button>
                         <button
                           onClick={() => setDeleteId(instruction.id)}
-                          className="p-2 bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-400 dark:hover:bg-gray-600 rounded-lg transition-colors"
+                          className="p-3 bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-400 dark:hover:bg-gray-600 rounded-lg transition-colors"
                         >
-                          <FiTrash2 size={17} />
+                          <FiTrash2 size={20} />
                         </button>
                       </div>
                     </div>

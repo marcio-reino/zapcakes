@@ -1,23 +1,35 @@
+import { useState, useEffect } from 'react'
 import logo from '../assets/images/Logo.svg'
 
-const links = {
-  Produto: [
-    { label: 'Recursos', href: '#recursos' },
-    { label: 'Preços', href: '#preco' },
-    { label: 'Como Funciona', href: '#como-funciona' },
-  ],
-  Suporte: [
-    { label: 'Central de Ajuda', href: '#' },
-    { label: 'Contato', href: '#' },
-    { label: 'WhatsApp', href: '#' },
-  ],
-  Legal: [
-    { label: 'Termos de Uso', href: '#' },
-    { label: 'Privacidade', href: '#' },
-  ],
-}
-
 export default function Footer() {
+  const [config, setConfig] = useState({})
+
+  useEffect(() => {
+    fetch(`${import.meta.env.VITE_API_URL || '/api'}/public/site-config`)
+      .then(r => r.json())
+      .then(setConfig)
+      .catch(() => {})
+  }, [])
+
+  const phone = config.company_phone || ''
+  const phoneDigits = phone.replace(/\D/g, '')
+  const email = config.company_email || ''
+
+  const links = {
+    Produto: [
+      { label: 'Recursos', href: '#recursos' },
+      { label: 'Preços', href: '#preco' },
+      { label: 'Como Funciona', href: '#como-funciona' },
+    ],
+    Suporte: [
+      ...(email ? [{ label: email, href: `mailto:${email}` }] : [{ label: 'Contato', href: '#' }]),
+      ...(phoneDigits ? [{ label: phone, href: `https://wa.me/55${phoneDigits}` }] : [{ label: 'WhatsApp', href: '#' }]),
+    ],
+    Legal: [
+      { label: 'Termos de Uso', href: '#' },
+      { label: 'Privacidade', href: '#' },
+    ],
+  }
   return (
     <footer className="bg-gray-900 text-gray-400 pt-16">
       <div className="max-w-7xl mx-auto px-6 pb-12 grid md:grid-cols-[1.5fr_2fr] gap-12 md:gap-16">

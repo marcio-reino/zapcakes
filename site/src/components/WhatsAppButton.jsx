@@ -1,9 +1,24 @@
+import { useState, useEffect } from 'react'
 import { FaWhatsapp } from 'react-icons/fa'
 
 export default function WhatsAppButton() {
+  const [phone, setPhone] = useState('')
+
+  useEffect(() => {
+    fetch(`${import.meta.env.VITE_API_URL || '/api'}/public/site-config`)
+      .then(r => r.json())
+      .then(data => {
+        const digits = (data.company_phone || '').replace(/\D/g, '')
+        if (digits) setPhone(digits)
+      })
+      .catch(() => {})
+  }, [])
+
+  if (!phone) return null
+
   return (
     <a
-      href="https://wa.me/5522998524209"
+      href={`https://wa.me/55${phone}`}
       target="_blank"
       rel="noopener noreferrer"
       aria-label="Fale conosco no WhatsApp"

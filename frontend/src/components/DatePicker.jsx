@@ -32,6 +32,7 @@ export default function DatePicker({ value, onChange, placeholder = 'Selecionar 
   const [viewYear, setViewYear] = useState(parsed?.year || today.getFullYear())
   const [viewMonth, setViewMonth] = useState(parsed?.month ?? today.getMonth())
   const ref = useRef(null)
+  const [dropPos, setDropPos] = useState({ top: 0, left: 0 })
 
   useEffect(() => {
     function handleClick(e) {
@@ -83,7 +84,19 @@ export default function DatePicker({ value, onChange, placeholder = 'Selecionar 
     <div className="relative" ref={ref}>
       <button
         type="button"
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          if (!open && ref.current) {
+            const rect = ref.current.getBoundingClientRect()
+            const spaceBelow = window.innerHeight - rect.bottom
+            const dropH = 360
+            const goUp = spaceBelow < dropH && rect.top > dropH
+            setDropPos({
+              top: goUp ? rect.top - dropH - 8 : rect.bottom + 8,
+              left: Math.min(rect.right - 300, window.innerWidth - 316),
+            })
+          }
+          setOpen(!open)
+        }}
         className={`flex items-center gap-2 px-3 py-3 rounded-lg border transition-all
           ${open
             ? 'border-pink-500 ring-2 ring-pink-500/20'
@@ -98,7 +111,7 @@ export default function DatePicker({ value, onChange, placeholder = 'Selecionar 
       </button>
 
       {open && (
-        <div className="absolute top-full right-0 mt-2 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl shadow-black/10 dark:shadow-black/30 p-4 w-[300px] animate-slideDown">
+        <div className="fixed z-[100] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl shadow-black/10 dark:shadow-black/30 p-4 w-[300px] animate-slideDown" style={{ top: dropPos.top, left: dropPos.left }}>
           {/* Header */}
           <div className="flex items-center justify-between mb-3">
             <button

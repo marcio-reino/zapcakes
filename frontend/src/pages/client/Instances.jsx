@@ -6,7 +6,7 @@ import { FiPlus, FiTrash2, FiRefreshCw, FiWifi, FiWifiOff } from 'react-icons/fi
 export default function ClientInstances() {
   const [instances, setInstances] = useState([])
   const [loading, setLoading] = useState(true)
-  const [instanceName, setInstanceName] = useState('')
+  const [creating, setCreating] = useState(false)
   const [qrData, setQrData] = useState(null)
 
   useEffect(() => { loadInstances() }, [])
@@ -22,26 +22,27 @@ export default function ClientInstances() {
     }
   }
 
-  async function createInstance(e) {
-    e.preventDefault()
+  async function createInstance() {
+    setCreating(true)
     try {
-      const { data } = await api.post('/instances', { instanceName })
+      const { data } = await api.post('/instances')
       toast.success('Instância criada!')
-      setInstanceName('')
       loadInstances()
       if (data.evolution?.qrcode?.base64) {
-        setQrData({ id: data.instance.id, base64: data.evolution.qrcode.base64 })
+        setQrData({ id: data.instance.id, base64: data.evolution.qrcode.base64, name: data.instance.instanceName })
       }
     } catch (err) {
       toast.error(err.response?.data?.error || 'Erro ao criar instância')
+    } finally {
+      setCreating(false)
     }
   }
 
-  async function connectInstance(id) {
+  async function connectInstance(inst) {
     try {
-      const { data } = await api.get(`/instances/${id}/qrcode`)
+      const { data } = await api.get(`/instances/${inst.id}/qrcode`)
       if (data?.base64) {
-        setQrData({ id, base64: data.base64 })
+        setQrData({ id: inst.id, base64: data.base64, name: inst.instanceName })
       }
       toast.success('Escaneie o QR Code para conectar')
     } catch {
@@ -64,6 +65,7 @@ export default function ClientInstances() {
     try {
       await api.delete(`/instances/${id}`)
       toast.success('Instância removida!')
+      setQrData(null)
       loadInstances()
     } catch {
       toast.error('Erro ao remover instância')
@@ -86,21 +88,24 @@ export default function ClientInstances() {
     <div>
       <h1 className="text-2xl font-bold text-gray-800 dark:text-white mb-6">Instâncias WhatsApp</h1>
 
-      <form onSubmit={createInstance} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 mb-6 flex gap-4">
-        <input
-          type="text" placeholder="Nome da instância (ex: minha-loja)" value={instanceName}
-          onChange={(e) => setInstanceName(e.target.value)}
-          className="flex-1 px-4 py-2 border dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white" required pattern="[a-zA-Z0-9_-]+"
-          title="Apenas letras, números, hífens e underlines"
-        />
-        <button type="submit" className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 flex items-center gap-2">
-          <FiPlus /> Criar
-        </button>
-      </form>
+      {instances.length === 0 && !qrData && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-8 mb-6 text-center">
+          <FiWifiOff size={40} className="mx-auto text-gray-400 mb-4" />
+          <p className="text-gray-600 dark:text-gray-400 mb-4">Nenhuma instância WhatsApp conectada.</p>
+          <button
+            onClick={createInstance}
+            disabled={creating}
+            className="bg-green-600 text-white px-6 py-2.5 rounded-lg hover:bg-green-700 flex items-center gap-2 mx-auto disabled:opacity-50"
+          >
+            <FiPlus /> {creating ? 'Criando...' : 'Conectar WhatsApp'}
+          </button>
+        </div>
+      )}
 
       {qrData && (
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 mb-6 text-center">
-          <h3 className="font-semibold text-gray-800 dark:text-white mb-4">Escaneie o QR Code com o WhatsApp</h3>
+          <h3 className="font-semibold text-gray-800 dark:text-white mb-1">Escaneie o QR Code com o WhatsApp</h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Instância: <span className="font-medium text-gray-700 dark:text-gray-300">{qrData.name}</span></p>
           <img src={qrData.base64} alt="QR Code" className="mx-auto max-w-xs" />
           <button onClick={() => { setQrData(null); loadInstances() }} className="mt-4 text-sm text-gray-500 dark:text-gray-400 hover:underline">
             Fechar
@@ -125,7 +130,7 @@ export default function ClientInstances() {
                   inst.status === 'CONNECTING' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
                   'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
                 }`}>
-                  {inst.status}
+                  {inst.status === 'CONNECTED' ? 'Conectado' : inst.status === 'CONNECTING' ? 'Conectando...' : 'Desconectado'}
                 </span>
               </div>
             </div>
@@ -135,7 +140,7 @@ export default function ClientInstances() {
                 <FiRefreshCw size={18} />
               </button>
               {inst.status !== 'CONNECTED' ? (
-                <button onClick={() => connectInstance(inst.id)} className="px-3 py-1 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700">
+                <button onClick={() => connectInstance(inst)} className="px-3 py-1 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700">
                   Conectar
                 </button>
               ) : (
@@ -149,8 +154,6 @@ export default function ClientInstances() {
             </div>
           </div>
         ))}
-
-        {instances.length === 0 && <p className="text-gray-500 dark:text-gray-400 text-center py-8">Nenhuma instância criada. Crie sua primeira instância acima.</p>}
       </div>
     </div>
   )

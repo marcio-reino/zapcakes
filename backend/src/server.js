@@ -19,6 +19,12 @@ import { evoAgentRoutes } from './routes/evo-agent.routes.js'
 import { customerRoutes } from './routes/customer.routes.js'
 import { agendaRoutes } from './routes/agenda.routes.js'
 import { companyRoutes } from './routes/company.routes.js'
+import { materialRoutes } from './routes/material.routes.js'
+import { shoppingListRoutes } from './routes/shopping-list.routes.js'
+import { recipeRoutes } from './routes/recipe.routes.js'
+import { dashboardRoutes } from './routes/dashboard.routes.js'
+import { superadminRoutes } from './routes/superadmin.routes.js'
+import { storeRoutes } from './routes/store.routes.js'
 import { ensureBucketPublicRead } from './config/s3.js'
 
 const app = Fastify({ logger: true })
@@ -37,10 +43,23 @@ app.decorate('authenticate', async (request, reply) => {
   }
 })
 
-// Decorator de verificação de admin
+// Decorator de verificação de admin (ADMIN ou SUPERADMIN)
 app.decorate('isAdmin', async (request, reply) => {
-  if (request.user.role !== 'ADMIN') {
+  if (request.user.role !== 'ADMIN' && request.user.role !== 'SUPERADMIN') {
     reply.status(403).send({ error: 'Acesso negado. Apenas administradores.' })
+  }
+})
+
+// Decorator de autenticação de customer (loja pública)
+app.decorate('authenticateCustomer', async (request, reply) => {
+  try {
+    await request.jwtVerify()
+    if (request.user.type !== 'customer') {
+      return reply.status(401).send({ error: 'Token inválido' })
+    }
+    request.customer = { customerId: request.user.customerId, userId: request.user.userId }
+  } catch (err) {
+    reply.status(401).send({ error: 'Token inválido ou expirado' })
   }
 })
 
@@ -60,11 +79,38 @@ await app.register(evoAgentRoutes, { prefix: '/api/evo-agent' })
 await app.register(customerRoutes, { prefix: '/api/customers' })
 await app.register(agendaRoutes, { prefix: '/api/agenda' })
 await app.register(companyRoutes, { prefix: '/api/company' })
+await app.register(materialRoutes, { prefix: '/api/materials' })
+await app.register(shoppingListRoutes, { prefix: '/api/shopping-lists' })
+await app.register(recipeRoutes, { prefix: '/api/recipes' })
+await app.register(dashboardRoutes, { prefix: '/api/dashboard' })
+await app.register(superadminRoutes, { prefix: '/api/superadmin' })
+await app.register(storeRoutes, { prefix: '/api/store' })
 
 // Versão e health check
 const VERSION = '1.7.0'
 app.get('/', async () => ({ name: 'ZapCakes API', version: VERSION }))
 app.get('/api/health', async () => ({ status: 'ok', version: VERSION, timestamp: new Date().toISOString() }))
+
+// Rotas públicas — dados para o site
+import prisma from './config/database.js'
+
+app.get('/api/public/site-config', async () => {
+  const configs = await prisma.systemConfig.findMany({
+    where: { key: { in: ['company_phone', 'company_email', 'site_confeitarias', 'site_pedidos', 'site_satisfacao'] } },
+  })
+  const result = {}
+  for (const c of configs) result[c.key] = c.value
+  return result
+})
+
+app.get('/api/public/plans', async () => {
+  const plans = await prisma.plan.findMany({
+    where: { active: true },
+    select: { id: true, title: true, description: true, price: true, features: true, trialDays: true, popular: true },
+    orderBy: { price: 'asc' },
+  })
+  return plans
+})
 
 // Start
 const start = async () => {

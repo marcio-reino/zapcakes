@@ -236,7 +236,8 @@ export class WebhookController {
             text: aiReply,
           })
 
-          // Salva resposta no log
+          // Salva resposta no log com tokens usados
+          const usage = openAiService._lastUsage || {}
           await prisma.message.create({
             data: {
               instanceId: instance.id,
@@ -244,8 +245,12 @@ export class WebhookController {
               fromMe: true,
               messageType: 'text',
               content: aiReply,
+              promptTokens: usage.prompt_tokens || null,
+              completionTokens: usage.completion_tokens || null,
+              totalTokens: usage.total_tokens || null,
             },
           })
+          openAiService._lastUsage = null
         } catch (err) {
           console.error('Erro ao processar mensagem com OpenAI:', err.message)
         }

@@ -1,6 +1,8 @@
 import prisma from '../config/database.js'
 import evolutionApi from '../config/evolution.js'
 
+const padNum = (n) => String(n).padStart(5, '0')
+
 export class OrderController {
   async list(request, reply) {
     const where = { userId: request.user.id }
@@ -10,7 +12,7 @@ export class OrderController {
     const orders = await prisma.order.findMany({
       where,
       include: {
-        items: { include: { product: true } },
+        items: { include: { product: true, attachments: true } },
         customer: { select: { id: true, name: true, phone: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -41,9 +43,17 @@ export class OrderController {
 
     const total = orderItems.reduce((sum, item) => sum + Number(item.price) * item.quantity, 0)
 
+    const lastOrder = await prisma.order.findFirst({
+      where: { userId: request.user.id },
+      orderBy: { orderNumber: 'desc' },
+      select: { orderNumber: true },
+    })
+    const nextOrderNumber = (lastOrder?.orderNumber || 0) + 1
+
     const order = await prisma.order.create({
       data: {
         userId: request.user.id,
+        orderNumber: nextOrderNumber,
         customerName,
         customerPhone,
         deliveryAddress,
@@ -51,7 +61,7 @@ export class OrderController {
         total,
         items: { create: orderItems },
       },
-      include: { items: { include: { product: true } } },
+      include: { items: { include: { product: true, attachments: true } } },
     })
 
     return reply.status(201).send(order)
@@ -62,7 +72,7 @@ export class OrderController {
     const order = await prisma.order.findFirst({
       where: { id: Number(id), userId: request.user.id },
       include: {
-        items: { include: { product: true } },
+        items: { include: { product: true, attachments: true } },
         customer: { select: { id: true, name: true, phone: true } },
       },
     })
@@ -76,7 +86,7 @@ export class OrderController {
 
   async updateStatus(request, reply) {
     const { id } = request.params
-    const { status } = request.body
+    const { status, notifyCustomer } = request.body
 
     const order = await prisma.order.findFirst({
       where: { id: Number(id), userId: request.user.id },
@@ -98,8 +108,43 @@ export class OrderController {
       await OrderController._sendWhatsApp(
         request.user.id,
         order.remoteJid,
-        `✅ *Pedido #${order.id} Confirmado!*\n\nSeu pedido foi confirmado e logo será preparado para entrega! 🎂${deliveryInfo}`
+        `✅ *Pedido #${padNum(order.orderNumber)} Confirmado!*\n\nSeu pedido foi confirmado e logo será preparado para entrega! 🎂${deliveryInfo}`
       )
+    }
+
+    // Envia notificação via WhatsApp quando o pedido está pronto
+    if (status === 'READY' && notifyCustomer) {
+      const phoneNumber = order.remoteJid
+        ? order.remoteJid.replace('@s.whatsapp.net', '')
+        : order.customerPhone ? order.customerPhone.replace(/\D/g, '') : null
+
+      if (phoneNumber) {
+        const whatsappNumber = phoneNumber.startsWith('55') ? phoneNumber : `55${phoneNumber}`
+        const deliveryInfo = order.deliveryType === 'ENTREGA'
+          ? '\n\n🚗 Em breve sairá para entrega!'
+          : '\n\n🏪 Já pode retirar no local!'
+        const msg = `🎉 *Pedido #${padNum(order.orderNumber)} está pronto!*\n\nSeu pedido ficou pronto e está esperando por você! 🧁${deliveryInfo}`
+
+        // Tenta instância do cliente, senão usa instância do sistema
+        let instance = await prisma.instance.findFirst({
+          where: { userId: request.user.id, status: 'CONNECTED' },
+        })
+        if (!instance) {
+          instance = await prisma.instance.findFirst({
+            where: { instanceName: 'ZapCakes-System', status: 'CONNECTED' },
+          })
+        }
+        if (instance) {
+          try {
+            await evolutionApi.post(`/message/sendText/${instance.instanceName}`, {
+              number: whatsappNumber,
+              text: msg,
+            })
+          } catch (err) {
+            console.error('[Notificação READY] Erro ao enviar WhatsApp:', err.message)
+          }
+        }
+      }
     }
 
     return updated
@@ -130,7 +175,7 @@ export class OrderController {
     const updated = await prisma.order.update({
       where: { id: Number(id) },
       data: updateData,
-      include: { items: { include: { product: true } } },
+      include: { items: { include: { product: true, attachments: true } } },
     })
 
     // Envia mensagem de confirmação via WhatsApp se tiver remoteJid
@@ -138,7 +183,7 @@ export class OrderController {
       await OrderController._sendWhatsApp(
         request.user.id,
         order.remoteJid,
-        `✅ *Pagamento da reserva verificado!*\n\nPedido #${order.id} confirmado. Em breve iniciaremos a produção! 🎂`
+        `✅ *Pagamento da reserva verificado!*\n\nPedido #${padNum(order.orderNumber)} confirmado. Em breve iniciaremos a produção! 🎂`
       )
     }
 
@@ -158,14 +203,14 @@ export class OrderController {
     const updated = await prisma.order.update({
       where: { id: Number(id) },
       data: { paymentConfirmed: true, status: 'CONFIRMED' },
-      include: { items: { include: { product: true } } },
+      include: { items: { include: { product: true, attachments: true } } },
     })
 
     if (order.remoteJid) {
       await OrderController._sendWhatsApp(
         request.user.id,
         order.remoteJid,
-        `✅ *Pagamento integral confirmado!*\n\nPedido #${order.id} confirmado. Em breve iniciaremos a produção! 🎂`
+        `✅ *Pagamento integral confirmado!*\n\nPedido #${padNum(order.orderNumber)} confirmado. Em breve iniciaremos a produção! 🎂`
       )
     }
 
@@ -207,7 +252,7 @@ export class OrderController {
     const updated = await prisma.order.update({
       where: { id: Number(id) },
       data: { status: 'CANCELLED' },
-      include: { items: { include: { product: true } } },
+      include: { items: { include: { product: true, attachments: true } } },
     })
 
     // Decrementa contador na agenda se o pedido tinha data prevista
@@ -230,7 +275,7 @@ export class OrderController {
     const { notify } = request.body || {}
     if (notify !== false && order.remoteJid) {
       const contactInfo = await OrderController._getContactInfo(request.user.id)
-      let msg = `❌ *Pedido #${order.id} Cancelado*\n\nSeu pedido foi cancelado pelo estabelecimento.`
+      let msg = `❌ *Pedido #${padNum(order.orderNumber)} Cancelado*\n\nSeu pedido foi cancelado pelo estabelecimento.`
       if (contactInfo) {
         msg += `\n\nPara mais informações, entre em contato:\n${contactInfo}`
       } else {
@@ -240,6 +285,163 @@ export class OrderController {
     }
 
     return updated
+  }
+
+  async deductStock(request, reply) {
+    const { id } = request.params
+
+    const order = await prisma.order.findFirst({
+      where: { id: Number(id), userId: request.user.id },
+      include: {
+        items: {
+          include: {
+            product: {
+              include: {
+                recipe: { include: { items: { include: { material: true } } } },
+              },
+            },
+          },
+        },
+      },
+    })
+    if (!order) {
+      return reply.status(404).send({ error: 'Pedido não encontrado' })
+    }
+    if (order.stockDeducted) {
+      return reply.status(400).send({ error: 'Estoque já foi baixado para este pedido' })
+    }
+
+    // Calcula o consumo total por material
+    const consumption = new Map() // materialId -> { quantity, materialName, recipeName }
+    const noRecipe = []
+
+    for (const item of order.items) {
+      const recipe = item.product.recipe
+      if (!recipe || !recipe.items.length) {
+        noRecipe.push(item.product.name)
+        continue
+      }
+      for (const ri of recipe.items) {
+        const totalQty = Number(ri.quantity) * item.quantity
+        const existing = consumption.get(ri.materialId)
+        if (existing) {
+          existing.quantity += totalQty
+        } else {
+          consumption.set(ri.materialId, {
+            quantity: totalQty,
+            materialName: ri.material.name,
+            currentStock: Number(ri.material.stock),
+          })
+        }
+      }
+    }
+
+    // Verifica se há estoque suficiente (nunca negativo)
+    const insufficient = []
+    for (const [materialId, info] of consumption) {
+      if (info.currentStock < info.quantity) {
+        insufficient.push({
+          material: info.materialName,
+          required: info.quantity,
+          available: info.currentStock,
+        })
+      }
+    }
+    if (insufficient.length > 0) {
+      return reply.status(400).send({
+        error: 'Estoque insuficiente para alguns materiais',
+        insufficient,
+      })
+    }
+
+    // Executa a baixa em transação
+    const operations = []
+    for (const [materialId, info] of consumption) {
+      operations.push(
+        prisma.material.update({
+          where: { id: materialId },
+          data: { stock: { decrement: info.quantity } },
+        })
+      )
+      operations.push(
+        prisma.stockMovement.create({
+          data: {
+            materialId,
+            orderId: order.id,
+            quantity: -info.quantity,
+            type: 'ORDER_DELIVERY',
+            description: `Pedido #${padNum(order.orderNumber)} - ${order.customerName}`,
+          },
+        })
+      )
+    }
+    operations.push(
+      prisma.order.update({
+        where: { id: order.id },
+        data: { stockDeducted: true },
+      })
+    )
+    await prisma.$transaction(operations)
+
+    return {
+      message: `Estoque baixado com ${consumption.size} materiais`,
+      noRecipe,
+      deducted: Array.from(consumption.entries()).map(([id, info]) => ({
+        materialId: id,
+        material: info.materialName,
+        quantity: info.quantity,
+      })),
+    }
+  }
+
+  async revertStock(request, reply) {
+    const { id } = request.params
+
+    const order = await prisma.order.findFirst({
+      where: { id: Number(id), userId: request.user.id },
+    })
+    if (!order) {
+      return reply.status(404).send({ error: 'Pedido não encontrado' })
+    }
+    if (!order.stockDeducted) {
+      return reply.status(400).send({ error: 'Este pedido não teve baixa no estoque' })
+    }
+
+    // Busca as movimentações de saída deste pedido
+    const movements = await prisma.stockMovement.findMany({
+      where: { orderId: order.id, type: 'ORDER_DELIVERY' },
+    })
+
+    const operations = []
+    for (const mov of movements) {
+      const qty = Math.abs(Number(mov.quantity))
+      operations.push(
+        prisma.material.update({
+          where: { id: mov.materialId },
+          data: { stock: { increment: qty } },
+        })
+      )
+      operations.push(
+        prisma.stockMovement.create({
+          data: {
+            materialId: mov.materialId,
+            orderId: order.id,
+            quantity: qty,
+            type: 'ORDER_DELIVERY_REVERT',
+            description: `Reversão - Pedido #${padNum(order.orderNumber)}`,
+          },
+        })
+      )
+    }
+    operations.push(
+      prisma.order.update({
+        where: { id: order.id },
+        data: { stockDeducted: false },
+      })
+    )
+    await prisma.$transaction(operations)
+
+    return { message: 'Estoque revertido com sucesso' }
   }
 
   // Parseia string de data de entrega para Date UTC

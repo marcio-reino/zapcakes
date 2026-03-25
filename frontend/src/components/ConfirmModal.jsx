@@ -4,7 +4,7 @@ export default function ConfirmModal({ isOpen, onClose, onConfirm, title = 'Conf
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={title} maxWidth="max-w-sm">
       <div className="flex flex-col items-center text-center">
-        <p className="text-gray-600 dark:text-gray-300 mb-6">{message}</p>
+        <p className="text-gray-600 dark:text-gray-300 mb-6 whitespace-pre-line">{message}</p>
         <div className="flex gap-3 w-full">
           <button
             onClick={onClose}

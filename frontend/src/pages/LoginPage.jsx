@@ -7,7 +7,8 @@ import logoSvg from '../assets/logo.svg'
 
 export default function LoginPage() {
   // Modo: 'login' | 'register' | 'activation'
-  const [mode, setMode] = useState('login')
+  const initialMode = new URLSearchParams(window.location.search).get('mode') === 'register' ? 'register' : 'login'
+  const [mode, setMode] = useState(initialMode)
 
   // Login fields
   const [email, setEmail] = useState('')
@@ -162,10 +163,10 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex bg-gradient-to-br from-green-500 to-green-700 dark:from-gray-800 dark:to-gray-900 relative overflow-hidden" style={{ fontFamily: "'Nunito', system-ui, -apple-system, sans-serif" }}>
-      {/* Background shapes */}
-      <div className="absolute -top-32 -left-32 w-96 h-96 bg-white/10 rounded-full blur-3xl" />
-      <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-white/5 rounded-full blur-3xl" />
+    <div className="min-h-screen flex bg-white dark:bg-gray-800 lg:bg-gradient-to-br lg:from-green-500 lg:to-green-700 lg:dark:from-gray-800 lg:dark:to-gray-900 relative overflow-hidden" style={{ fontFamily: "'Nunito', system-ui, -apple-system, sans-serif" }}>
+      {/* Background shapes - only desktop */}
+      <div className="hidden lg:block absolute -top-32 -left-32 w-96 h-96 bg-white/10 rounded-full blur-3xl" />
+      <div className="hidden lg:block absolute -bottom-32 -right-32 w-96 h-96 bg-white/5 rounded-full blur-3xl" />
 
       {/* Left side - Branding */}
       <div className="hidden lg:flex flex-1 items-center justify-end p-12 pr-20 relative">
@@ -182,11 +183,11 @@ export default function LoginPage() {
       </div>
 
       {/* Right side - Form */}
-      <div className="flex-1 flex items-center justify-center p-6 lg:p-12">
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-8 md:p-10 w-full max-w-md">
+      <div className="flex-1 flex items-center justify-center px-6 py-10 lg:p-12">
+        <div className="bg-white dark:bg-gray-800 lg:rounded-2xl lg:shadow-2xl p-0 lg:p-10 w-full max-w-md">
           {/* Mobile logo */}
-          <div className="lg:hidden text-center mb-6">
-            <img src={logoSvg} alt="ZapCakes" className="h-16 mx-auto mb-2" />
+          <div className="lg:hidden text-center mb-8">
+            <img src={logoSvg} alt="ZapCakes" className="h-14 mx-auto mb-2" />
           </div>
 
           {mode === 'login' && (
@@ -199,24 +200,24 @@ export default function LoginPage() {
 
               <form onSubmit={handleLogin} className="space-y-5">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Email</label>
+                  <label className="block text-base lg:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Email</label>
                   <input
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none dark:bg-gray-700 dark:text-white transition-all"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none dark:bg-gray-700 dark:text-white transition-all text-base lg:text-sm"
                     placeholder="seu@email.com"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Senha</label>
+                  <label className="block text-base lg:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Senha</label>
                   <input
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none dark:bg-gray-700 dark:text-white transition-all"
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none dark:bg-gray-700 dark:text-white transition-all text-base lg:text-sm"
                     placeholder="Sua senha"
                     required
                   />
@@ -230,12 +231,12 @@ export default function LoginPage() {
                     >
                       <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${stayLogged ? 'translate-x-5' : ''}`} />
                     </div>
-                    <span className="text-sm text-gray-600 dark:text-gray-400">Permanecer logado</span>
+                    <span className="text-base lg:text-sm text-gray-600 dark:text-gray-400">Permanecer logado</span>
                   </label>
                   <button
                     type="button"
                     onClick={() => setShowForgot(true)}
-                    className="text-sm text-green-600 dark:text-green-400 font-semibold hover:underline"
+                    className="text-base lg:text-sm text-green-600 dark:text-green-400 font-semibold hover:underline"
                   >
                     Esqueci minha senha
                   </button>
@@ -244,13 +245,13 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-green-600 text-white py-3.5 rounded-xl font-semibold hover:bg-green-700 transition-all hover:shadow-lg hover:shadow-green-600/30 disabled:opacity-50 text-base"
+                  className="w-full bg-green-600 text-white py-3.5 rounded-xl font-semibold hover:bg-green-700 transition-all hover:shadow-lg hover:shadow-green-600/30 disabled:opacity-50 text-lg lg:text-base"
                 >
                   {loading ? 'Entrando...' : 'Entrar'}
                 </button>
               </form>
 
-              <p className="text-center mt-8 text-gray-500 dark:text-gray-400">
+              <p className="text-center mt-8 text-base lg:text-sm text-gray-500 dark:text-gray-400">
                 Ainda não tem conta?{' '}
                 <button onClick={() => setMode('register')} className="text-green-600 dark:text-green-400 font-semibold hover:underline">
                   Cadastre-se
@@ -378,6 +379,9 @@ export default function LoginPage() {
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   Não recebeu o código?
                 </p>
+                <p className="text-xs text-gray-400 dark:text-gray-500">
+                  Verifique no seu e-mail a caixa de spam
+                </p>
                 {resendTimer > 0 ? (
                   <p className="text-sm text-gray-400 dark:text-gray-500">
                     Reenviar em <span className="font-semibold text-green-600 dark:text-green-400">{resendTimer}s</span>
@@ -386,7 +390,7 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={handleResendCode}
-                    className="text-sm text-green-600 dark:text-green-400 font-semibold hover:underline"
+                    className="text-sm text-white font-semibold bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600 px-4 py-2 rounded-lg transition-colors"
                   >
                     Reenviar código
                   </button>
@@ -434,7 +438,7 @@ export default function LoginPage() {
               <button
                 type="button"
                 onClick={() => setShowForgot(false)}
-                className="w-full text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                className="w-full py-4 text-lg lg:text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
               >
                 Cancelar
               </button>

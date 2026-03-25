@@ -1,8 +1,25 @@
+import { useState, useEffect } from 'react'
 import { HiPhone } from 'react-icons/hi'
 import { HiCheckCircle } from 'react-icons/hi2'
 import celularImg from '../assets/images/celular.png'
 
+const LOGIN_URL = import.meta.env.VITE_LOGIN_URL || '/login'
+const REGISTER_URL = `${LOGIN_URL}?mode=register`
+
 export default function Hero() {
+  const [siteData, setSiteData] = useState({})
+
+  useEffect(() => {
+    fetch(`${import.meta.env.VITE_API_URL || '/api'}/public/site-config`)
+      .then(r => r.json())
+      .then(setSiteData)
+      .catch(() => {})
+  }, [])
+
+  const confeitarias = siteData.site_confeitarias || '50'
+  const pedidos = siteData.site_pedidos || '+340'
+  const satisfacao = siteData.site_satisfacao || '4.9'
+
   return (
     <section className="relative pt-36 pb-20 md:pt-40 md:pb-28 overflow-hidden bg-gradient-to-br from-primary-50 via-emerald-50 to-green-50">
       {/* Background shapes */}
@@ -29,7 +46,7 @@ export default function Hero() {
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center md:justify-start opacity-0 animate-fade-in-delay-2">
-            <a href="#preco" className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-primary-600 text-white font-semibold rounded-xl hover:bg-primary-700 transition-all hover:-translate-y-0.5 shadow-lg shadow-green-600/30 text-base">
+            <a href={REGISTER_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-primary-600 text-white font-semibold rounded-xl hover:bg-primary-700 transition-all hover:-translate-y-0.5 shadow-lg shadow-green-600/30 text-base">
               <HiPhone className="text-lg" />
               Quero Experimentar Grátis
             </a>
@@ -47,7 +64,7 @@ export default function Hero() {
               ))}
             </div>
             <p className="text-sm text-gray-500">
-              Mais de <strong className="text-gray-700">50 confeitarias</strong> já automatizaram seus pedidos
+              Mais de <strong className="text-gray-700">{confeitarias} confeitarias</strong> já automatizaram seus pedidos
             </p>
           </div>
         </div>
@@ -61,11 +78,11 @@ export default function Hero() {
           {/* Floating cards */}
           <div className="hidden md:flex absolute bottom-20 -left-4 items-center gap-2 px-4 py-3 bg-white rounded-xl shadow-xl text-sm font-medium opacity-0 animate-slide-up">
             <HiCheckCircle className="text-primary-500 text-xl" />
-            <span><strong>+340</strong> pedidos hoje</span>
+            <span><strong>{pedidos}</strong> pedidos hoje</span>
           </div>
           <div className="hidden md:flex absolute top-20 -right-2 items-center gap-2 px-4 py-3 bg-white rounded-xl shadow-xl text-sm font-medium opacity-0 animate-slide-up">
             <span className="text-yellow-400 text-base">&#9733;&#9733;&#9733;&#9733;&#9733;</span>
-            <span>4.9 satisfação</span>
+            <span>{satisfacao} satisfação</span>
           </div>
         </div>
       </div>

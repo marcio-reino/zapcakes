@@ -542,27 +542,44 @@ export class OpenAiService {
           where: { userId, active: true },
         })
         const allContent = instructions.map(i => `${i.title} ${i.content}`).join(' ').toLowerCase()
-        const hasDelivery = allContent.includes('entrega') || allContent.includes('delivery') || allContent.includes('frete')
-        const hasPickup = allContent.includes('retirada') || allContent.includes('retirar') || allContent.includes('buscar no local')
+
+        // Busca configuração de delivery da conta
+        const accountConfig = await prisma.account.findUnique({
+          where: { userId },
+          select: { deliveryEnabled: true },
+        })
+
+        const hasDelivery = accountConfig?.deliveryEnabled || allContent.includes('entrega') || allContent.includes('delivery') || allContent.includes('frete')
+        const hasPickup = allContent.includes('retirada') || allContent.includes('retirar') || allContent.includes('buscar no local') || true
 
         // Busca endereço da empresa (do User)
         const user = await prisma.user.findUnique({ where: { id: userId } })
         const companyAddress = [user?.street, user?.number, user?.neighborhood, user?.city, user?.state]
           .filter(Boolean).join(', ')
 
-        // Extrai taxas de entrega das instruções
-        const deliveryFees = this._extractDeliveryFees(instructions)
-        const feesInfo = deliveryFees.length > 0
-          ? deliveryFees.map(f => `${f.location}: R$ ${f.value.toFixed(2)}`).join(', ')
+        // Busca taxas de entrega do banco (DeliveryZone) + instruções (fallback)
+        const dbZones = await prisma.deliveryZone.findMany({
+          where: { userId, active: true },
+          orderBy: { name: 'asc' },
+        })
+        const instructionFees = this._extractDeliveryFees(instructions)
+
+        // Prioriza zonas do banco, usa instruções como fallback
+        const allFees = dbZones.length > 0
+          ? dbZones.map(z => ({ location: z.name.toLowerCase(), value: Number(z.fee) }))
+          : instructionFees
+
+        const feesInfo = allFees.length > 0
+          ? allFees.map(f => `${f.location}: ${f.value === 0 ? 'Grátis' : `R$ ${f.value.toFixed(2)}`}`).join(', ')
           : null
 
         const result = {
-          deliveryAvailable: hasDelivery || hasPickup,
-          pickupAvailable: hasPickup || !hasDelivery,
+          deliveryAvailable: hasDelivery,
+          pickupAvailable: hasPickup,
           companyAddress: companyAddress || 'Endereço não cadastrado',
         }
 
-        if (deliveryFees.length > 0) {
+        if (allFees.length > 0) {
           result.deliveryFees = feesInfo
           result.message = `Taxas de entrega por localidade: ${feesInfo}. ` +
             (hasPickup ? 'Retirada no local também disponível.' : '')
@@ -605,11 +622,19 @@ export class OpenAiService {
             where: { userId, active: true, category: 'ORDERS' },
           })
 
-          // Taxa de entrega
+          // Taxa de entrega — prioriza DeliveryZone do banco, fallback para instruções
           let deliveryFee = args.deliveryFee || 0
           if (args.deliveryType === 'ENTREGA' && !deliveryFee) {
-            const fees = this._extractDeliveryFees(orderInstructions)
-            deliveryFee = this._findDeliveryFee(fees, args.neighborhood, args.city)
+            const dbZones = await prisma.deliveryZone.findMany({
+              where: { userId, active: true },
+            })
+            if (dbZones.length > 0) {
+              const zoneFees = dbZones.map(z => ({ location: z.name.toLowerCase(), value: Number(z.fee) }))
+              deliveryFee = this._findDeliveryFee(zoneFees, args.neighborhood, args.city)
+            } else {
+              const fees = this._extractDeliveryFees(orderInstructions)
+              deliveryFee = this._findDeliveryFee(fees, args.neighborhood, args.city)
+            }
           }
 
           const total = itemsTotal + deliveryFee
@@ -638,9 +663,17 @@ export class OpenAiService {
             }
           }
 
+          const lastOrder = await prisma.order.findFirst({
+            where: { userId },
+            orderBy: { orderNumber: 'desc' },
+            select: { orderNumber: true },
+          })
+          const nextOrderNumber = (lastOrder?.orderNumber || 0) + 1
+
           const order = await prisma.order.create({
             data: {
               userId,
+              orderNumber: nextOrderNumber,
               customerId: args.customerId,
               customerName: args.customerName,
               customerPhone: args.customerPhone.replace(/\D/g, ''),
@@ -671,7 +704,7 @@ export class OpenAiService {
             }
           }
 
-          let message = `Pedido #${order.id} criado com sucesso! Subtotal: R$ ${itemsTotal.toFixed(2)}.`
+          let message = `Pedido #${String(order.orderNumber).padStart(5, '0')} criado com sucesso! Subtotal: R$ ${itemsTotal.toFixed(2)}.`
           if (deliveryFee > 0) message += ` Taxa de entrega: R$ ${deliveryFee.toFixed(2)}.`
           message += ` Total: R$ ${total.toFixed(2)}.`
           if (reservation) message += ` Reserva (${resPercent}%): R$ ${reservation.toFixed(2)}.`
@@ -915,7 +948,7 @@ export class OpenAiService {
           if (valueDivergent) {
             result.message = divergenceMessage
           } else {
-            result.message = `Pagamento da reserva registrado para o Pedido #${order.id}. ${paymentProofUrl ? 'Comprovante salvo.' : ''} Vamos confirmar o pagamento e iniciar a produção.`
+            result.message = `Pagamento da reserva registrado para o Pedido #${String(order.orderNumber).padStart(5, '0')}. ${paymentProofUrl ? 'Comprovante salvo.' : ''} Vamos confirmar o pagamento e iniciar a produção.`
           }
 
           return JSON.stringify(result)
@@ -940,7 +973,15 @@ export class OpenAiService {
     // Extrai configurações de reserva e taxa de entrega das instruções
     const hasReservation = this._hasReservation(instructions)
     const reservationPercent = hasReservation ? (this._extractReservationPercent(instructions) || 30) : null
-    const deliveryFees = this._extractDeliveryFees(instructions)
+
+    // Busca zonas de entrega do banco (prioridade) + fallback instruções
+    const dbZones = await prisma.deliveryZone.findMany({
+      where: { userId, active: true },
+      orderBy: { name: 'asc' },
+    })
+    const deliveryFees = dbZones.length > 0
+      ? dbZones.map(z => ({ location: z.name, value: Number(z.fee) }))
+      : this._extractDeliveryFees(instructions)
 
     const categoryLabels = {
       GREETING: 'Saudação',
@@ -1045,7 +1086,7 @@ export class OpenAiService {
       prompt += `\n### TAXAS DE ENTREGA\n\n`
       prompt += `As taxas de entrega por localidade são:\n`
       deliveryFees.forEach(f => {
-        prompt += `- ${f.location}: R$ ${f.value.toFixed(2)}\n`
+        prompt += `- ${f.location}: ${f.value === 0 ? 'Grátis' : `R$ ${f.value.toFixed(2)}`}\n`
       })
       prompt += `\nInforme a taxa de entrega ao cliente com base no bairro/cidade. Inclua a taxa no total do pedido.\n`
       prompt += `Se o bairro/cidade não estiver na lista, informe que não há entrega disponível para a localidade e ofereça retirada no local.\n`
@@ -1298,6 +1339,7 @@ export class OpenAiService {
 
   // Loop de processamento com tool calls
   async processWithTools(messages, userId, remoteJid, instanceName) {
+    this._lastUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
     let maxIterations = 5 // Evita loops infinitos
 
     while (maxIterations > 0) {
@@ -1309,6 +1351,14 @@ export class OpenAiService {
         tools: agentTools,
         tool_choice: 'auto',
       })
+
+      // Acumula tokens para tracking
+      if (completion.usage) {
+        this._lastUsage = this._lastUsage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
+        this._lastUsage.prompt_tokens += completion.usage.prompt_tokens || 0
+        this._lastUsage.completion_tokens += completion.usage.completion_tokens || 0
+        this._lastUsage.total_tokens += completion.usage.total_tokens || 0
+      }
 
       const choice = completion.choices[0]
       const assistantMessage = choice.message

@@ -240,28 +240,28 @@ export default function ImageUpload({ value, onChange, aspectOptions }) {
 
       {/* Preview ou Botão de Upload */}
       {previewUrl ? (
-        <div className="relative group w-32 h-32">
+        <div className="relative group w-40 h-40 md:w-32 md:h-32">
           <img
             src={previewUrl}
             alt="Preview"
-            className="w-32 h-32 object-cover rounded-xl border-2 border-gray-200 dark:border-gray-600"
+            className="w-40 h-40 md:w-32 md:h-32 object-cover rounded-xl border-2 border-gray-200 dark:border-gray-600"
           />
-          <div className="absolute inset-0 bg-black/40 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+          <div className="absolute inset-0 bg-black/40 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3 md:gap-2">
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="p-1.5 bg-white/90 rounded-lg text-gray-700 hover:bg-white"
+              className="p-2.5 md:p-1.5 bg-white/90 rounded-lg text-gray-700 hover:bg-white"
               title="Trocar imagem"
             >
-              <FiUpload size={15} />
+              <FiUpload className="w-5 h-5 md:w-4 md:h-4" />
             </button>
             <button
               type="button"
               onClick={handleRemove}
-              className="p-1.5 bg-red-500/90 rounded-lg text-white hover:bg-red-600"
+              className="p-2.5 md:p-1.5 bg-red-500/90 rounded-lg text-white hover:bg-red-600"
               title="Remover"
             >
-              <FiX size={15} />
+              <FiX className="w-5 h-5 md:w-4 md:h-4" />
             </button>
           </div>
         </div>
@@ -269,10 +269,10 @@ export default function ImageUpload({ value, onChange, aspectOptions }) {
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          className="w-32 h-32 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl flex flex-col items-center justify-center gap-1.5 text-gray-400 hover:text-green-500 hover:border-green-500 dark:hover:border-green-500 transition-colors cursor-pointer focus:border-green-500 focus:text-green-500 focus:ring-2 focus:ring-green-500/30 outline-none"
+          className="w-40 h-40 md:w-32 md:h-32 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl flex flex-col items-center justify-center gap-2 md:gap-1.5 text-gray-400 hover:text-green-500 hover:border-green-500 dark:hover:border-green-500 transition-colors cursor-pointer focus:border-green-500 focus:text-green-500 focus:ring-2 focus:ring-green-500/30 outline-none"
         >
-          <FiUpload size={20} />
-          <span className="text-[10px]">Upload ou Ctrl+V</span>
+          <FiUpload className="w-6 h-6 md:w-5 md:h-5" />
+          <span className="text-xs md:text-[10px]">Upload ou Ctrl+V</span>
         </button>
       )}
 

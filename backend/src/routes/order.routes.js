@@ -13,4 +13,6 @@ export async function orderRoutes(app) {
   app.put('/:id/confirm-payment', controller.confirmPayment)
   app.put('/:id/cancel', controller.cancelOrder)
   app.put('/:id/internal-notes', controller.updateInternalNotes)
+  app.post('/:id/deduct-stock', controller.deductStock)
+  app.post('/:id/revert-stock', controller.revertStock)
 }
