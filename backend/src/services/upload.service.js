@@ -16,6 +16,7 @@ export class UploadService {
         Key: key,
         Body: buffer,
         ContentType: file.mimetype,
+        CacheControl: 'public, max-age=31536000, immutable',
       })
     )
 
@@ -35,6 +36,7 @@ export class UploadService {
         Key: key,
         Body: buffer,
         ContentType: mimetype,
+        CacheControl: 'public, max-age=31536000, immutable',
       })
     )
 

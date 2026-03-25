@@ -108,6 +108,9 @@ export default function AdminProducts() {
 
   async function handleSubmit(e) {
     e.preventDefault()
+    if (!form.categoryId) {
+      return toast.error('Selecione uma categoria')
+    }
     setSaving(true)
     try {
       let imageUrl = null
@@ -134,11 +137,13 @@ export default function AdminProducts() {
       if (editingId) {
         await api.put(`/products/${editingId}`, payload)
         toast.success('Produto atualizado!')
+        closeModal()
       } else {
         await api.post('/products', payload)
         toast.success('Produto criado!')
+        setForm({ name: '', description: '', price: '', categoryId: '', image: null, minOrder: 1, allowInspirationImages: false, inspirationInstruction: '', maxInspirationImages: 3, recipeId: '' })
+        setFormTab('descricao')
       }
-      closeModal()
       loadData()
     } catch {
       toast.error('Erro ao salvar produto')

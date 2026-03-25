@@ -97,11 +97,12 @@ export default function Materials() {
       if (editingId) {
         await api.put(`/materials/${editingId}`, payload)
         toast.success('Material atualizado!')
+        closeModal()
       } else {
         await api.post('/materials', payload)
         toast.success('Material cadastrado!')
+        setForm(emptyForm)
       }
-      closeModal()
       loadMaterials()
     } catch {
       toast.error('Erro ao salvar material')

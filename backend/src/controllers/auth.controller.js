@@ -199,8 +199,7 @@ export class AuthController {
 
     const user = await prisma.user.findUnique({ where: { email } })
 
-    // Sempre retorna sucesso para não revelar se o e-mail existe
-    if (!user) return { success: true }
+    if (!user) return reply.status(404).send({ error: 'E-mail não encontrado' })
 
     // Gera token de 6 dígitos + hash seguro
     const token = crypto.randomBytes(32).toString('hex')

@@ -32,11 +32,12 @@ export default function AdminCategories() {
       if (editingId) {
         await api.put(`/categories/${editingId}`, { name })
         toast.success('Categoria atualizada!')
+        closeModal()
       } else {
         await api.post('/categories', { name })
         toast.success('Categoria criada!')
+        setName('')
       }
-      closeModal()
       loadCategories()
     } catch {
       toast.error('Erro ao salvar categoria')

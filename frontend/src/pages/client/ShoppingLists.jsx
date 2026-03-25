@@ -572,7 +572,7 @@ export default function ShoppingLists() {
         </div>
 
         {/* Botões finais */}
-        {items.length > 0 && !isClosed && (
+        {items.length > 0 && isClosed && (
           <div className="mt-4 space-y-3">
             <button
               onClick={() => {

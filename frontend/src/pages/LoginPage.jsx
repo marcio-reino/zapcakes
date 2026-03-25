@@ -155,8 +155,8 @@ export default function LoginPage() {
       toast.success('E-mail de recuperação enviado! Verifique sua caixa de entrada.')
       setShowForgot(false)
       setForgotEmail('')
-    } catch {
-      toast.error('Erro ao enviar e-mail. Tente novamente.')
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Erro ao enviar e-mail. Tente novamente.')
     } finally {
       setForgotLoading(false)
     }
@@ -294,11 +294,19 @@ export default function LoginPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Telefone</label>
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Celular</label>
                   <input
                     type="text"
+                    inputMode="numeric"
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    onChange={(e) => {
+                      const digits = e.target.value.replace(/\D/g, '').slice(0, 11)
+                      let masked = digits
+                      if (digits.length > 2) masked = `(${digits.slice(0, 2)}) ${digits.slice(2)}`
+                      else if (digits.length > 0) masked = `(${digits}`
+                      if (digits.length > 7) masked = `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`
+                      setPhone(masked)
+                    }}
                     className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none dark:bg-gray-700 dark:text-white transition-all"
                     placeholder="(00) 00000-0000"
                   />
