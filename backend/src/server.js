@@ -27,12 +27,12 @@ import { superadminRoutes } from './routes/superadmin.routes.js'
 import { storeRoutes } from './routes/store.routes.js'
 import { ensureBucketPublicRead } from './config/s3.js'
 
-const app = Fastify({ logger: true })
+const app = Fastify({ logger: true, bodyLimit: 20 * 1024 * 1024 })
 
 // Plugins
 await app.register(cors, { origin: true })
 await app.register(jwt, { secret: process.env.JWT_SECRET })
-await app.register(multipart)
+await app.register(multipart, { limits: { fileSize: 20 * 1024 * 1024 } })
 
 // Decorator de autenticação
 app.decorate('authenticate', async (request, reply) => {
