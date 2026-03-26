@@ -37,7 +37,7 @@ async function notifyNewUser(name, email) {
 
     await evolutionApi.post(`/message/sendText/${instance.instanceName}`, {
       number,
-      text: `📋 *Novo cadastro no ZapCakes*\n\n👤 *Nome:* ${name}\n📧 *E-mail:* ${email}\n📅 *Data:* ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`,
+      text: `*Novo cadastro no ZapCakes*\n\n*Nome:* ${name}\n*E-mail:* ${email}\n*Data:* ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`,
     })
   } catch (err) {
     console.error('Erro ao notificar novo cadastro:', err.message)
