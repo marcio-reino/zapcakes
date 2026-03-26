@@ -33,12 +33,14 @@ export default function StoreLogin() {
   const [forgotPhone, setForgotPhone] = useState('')
   const [forgotCode, setForgotCode] = useState(['', '', '', '', '', ''])
   const [forgotNewPass, setForgotNewPass] = useState('')
+  const [forgotConfirmPass, setForgotConfirmPass] = useState('')
   const codeRefs = useRef([])
 
   function startForgotPassword() {
     setForgotPhone(phone || '')
     setForgotCode(['', '', '', '', '', ''])
     setForgotNewPass('')
+    setForgotConfirmPass('')
     setForgotStep('phone')
   }
 
@@ -108,6 +110,7 @@ export default function StoreLogin() {
   async function handleResetPassword(e) {
     e.preventDefault()
     if (forgotNewPass.length < 4) return toast.error('Senha deve ter no minimo 4 caracteres')
+    if (forgotNewPass !== forgotConfirmPass) return toast.error('As senhas nao coincidem')
     const raw = forgotPhone.trim().replace(/\D/g, '')
     const code = forgotCode.join('')
     setLoading(true)
@@ -277,12 +280,27 @@ export default function StoreLogin() {
                   />
                 </div>
               </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Repetir senha</label>
+                <div className="relative">
+                  <FiLock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="password"
+                    value={forgotConfirmPass}
+                    onChange={e => setForgotConfirmPass(e.target.value)}
+                    placeholder="Digite a senha novamente"
+                    minLength={4}
+                    className="w-full pl-10 pr-4 py-4 border border-gray-200 rounded-xl text-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none bg-gray-50 focus:bg-white transition-colors"
+                    required
+                  />
+                </div>
+              </div>
               <button
                 type="submit"
                 disabled={loading}
                 className="w-full py-4 bg-green-600 text-white rounded-xl font-bold text-lg hover:bg-green-700 transition-all disabled:opacity-50 shadow-lg shadow-green-600/20 active:scale-[0.98]"
               >
-                {loading ? 'Salvando...' : 'Salvar nova senha e entrar'}
+                {loading ? 'Salvando...' : 'Salvar nova senha'}
               </button>
             </form>
           )}
