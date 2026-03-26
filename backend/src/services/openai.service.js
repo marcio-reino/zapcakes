@@ -146,7 +146,7 @@ const agentTools = [
     type: 'function',
     function: {
       name: 'consultar_agenda',
-      description: 'Consulta as datas disponíveis na agenda do estabelecimento para entrega/retirada. Use ANTES de perguntar a data ao cliente, para informar quais dias estão disponíveis e com vagas.',
+      description: 'Consulta as datas disponíveis na agenda do estabelecimento para entrega/retirada. Use APÓS o cliente informar a data desejada, para verificar se há disponibilidade naquele dia.',
       parameters: {
         type: 'object',
         properties: {},
@@ -1129,14 +1129,15 @@ export class OpenAiService {
     prompt += '\n'
 
     prompt += `### DATA PREVISTA PARA ENTREGA\n\n`
-    prompt += `h) ANTES de perguntar a data ao cliente, OBRIGATORIAMENTE use a função "consultar_agenda" para verificar as datas disponíveis.\n`
+    prompt += `h) Pergunte ao cliente: "Para qual data você gostaria que o pedido fosse entregue/retirado?"\n`
+    prompt += `   - O cliente pode responder com data e horário (ex: "Sábado dia 22 às 14h", "25/03 às 10h", "próxima sexta")\n`
+    prompt += `   - Após o cliente informar a data desejada, use a função "consultar_agenda" para verificar se há disponibilidade naquela data\n`
     prompt += `   - Se a agenda NÃO estiver configurada (agendaConfigured=false): aceite qualquer data que o cliente informar\n`
-    prompt += `   - Se a agenda estiver configurada E houver datas disponíveis: apresente as datas disponíveis ao cliente e peça para ele escolher uma\n`
+    prompt += `   - Se a data informada pelo cliente estiver DISPONÍVEL na agenda: confirme dizendo "Temos disponibilidade para esse dia!" e pergunte o HORÁRIO de preferência (ex: "Qual horário você prefere?")\n`
+    prompt += `   - Se a data informada pelo cliente estiver LOTADA ou NÃO estiver na agenda: informe que aquela data não está disponível e mostre as datas disponíveis como alternativas\n`
     prompt += `   - Se a agenda estiver configurada mas TODAS as datas estiverem lotadas: informe ao cliente que não há datas disponíveis no momento e peça para entrar em contato diretamente\n`
-    prompt += `   - Se o cliente pedir uma data que NÃO está na agenda ou está lotada: informe que aquela data não está disponível e mostre as alternativas\n`
-    prompt += `   - O cliente pode responder com data e horário (ex: "Sábado dia 22 às 14h", "25/03 às 10h")\n`
-    prompt += `   - Salve essa informação no campo "estimatedDeliveryDate" ao criar o pedido (formato: dd/mm/yyyy seguido do horário se informado)\n`
-    prompt += `   - Inclua a data prevista no resumo do pedido\n\n`
+    prompt += `   - Após confirmar a data e o horário, salve essa informação no campo "estimatedDeliveryDate" ao criar o pedido (formato: dd/mm/yyyy seguido do horário)\n`
+    prompt += `   - Inclua a data e horário previstos no resumo do pedido\n\n`
 
     prompt += `### CONFIRMAÇÃO E CRIAÇÃO DO PEDIDO\n\n`
     prompt += `i) Apresente o resumo completo do pedido ANTES de criar. ATENÇÃO: você DEVE listar TODOS os itens que o cliente pediu durante a conversa, com os nomes reais dos produtos, quantidades e preços do catálogo. NÃO use placeholders como "[Itens e quantidades do pedido a serem listados]" ou "R$ ValorTotal". Calcule os valores reais.\n\n`
@@ -1216,7 +1217,7 @@ export class OpenAiService {
     prompt += `- SEMPRE peça o celular com DDD antes de fechar o pedido\n`
     prompt += `- SEMPRE busque o cliente na base antes de prosseguir\n`
     prompt += `- SEMPRE verifique o tipo de entrega disponível\n`
-    prompt += `- SEMPRE use "consultar_agenda" ANTES de perguntar a data prevista de entrega ao cliente\n`
+    prompt += `- SEMPRE pergunte a data desejada ao cliente PRIMEIRO, depois use "consultar_agenda" para verificar disponibilidade, e em seguida pergunte o horário\n`
     prompt += `- SEMPRE respeite a disponibilidade da agenda: não crie pedidos para datas lotadas ou não configuradas (se a agenda estiver ativa)\n`
     prompt += `- SEMPRE confirme os dados com o cliente antes de cadastrar\n`
     prompt += `- SEMPRE use a função "criar_pedido" para gravar o pedido após confirmação do cliente\n`
