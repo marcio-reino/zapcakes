@@ -1,8 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import api from '../../services/api.js'
 import toast from 'react-hot-toast'
 import ImageUpload from '../../components/ImageUpload.jsx'
-import { FiSave, FiMapPin, FiSearch } from 'react-icons/fi'
+import Modal from '../../components/Modal.jsx'
+import { FiSave, FiMapPin, FiSearch, FiDownload, FiSmartphone } from 'react-icons/fi'
+import { FaWhatsapp } from 'react-icons/fa'
+import { QRCodeCanvas } from 'qrcode.react'
 
 const UF_OPTIONS = [
   'AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT',
@@ -54,8 +57,20 @@ export default function Company() {
   const [logoFile, setLogoFile] = useState(null) // blob do ImageUpload
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [showWhatsappModal, setShowWhatsappModal] = useState(false)
+  const [waInstance, setWaInstance] = useState(null)
+  const qrCanvasRef = useRef(null)
 
   useEffect(() => { loadCompany() }, [])
+
+  useEffect(() => {
+    // Carrega dados da instância WhatsApp
+    api.get('/evo-agent/status').then(({ data }) => {
+      if (data?.whatsapp?.phone) {
+        setWaInstance(data.whatsapp)
+      }
+    }).catch(() => {})
+  }, [])
 
   async function loadCompany() {
     try {
@@ -156,6 +171,33 @@ export default function Company() {
     return `https://www.google.com/maps?q=${q}&output=embed`
   }
 
+  function formatPhone(phone) {
+    if (!phone) return ''
+    const clean = phone.replace(/\D/g, '')
+    if (clean.startsWith('55') && clean.length >= 12) {
+      const ddd = clean.slice(2, 4)
+      const num = clean.slice(4)
+      return `(${ddd}) ${num.slice(0, 5)}-${num.slice(5)}`
+    }
+    return phone
+  }
+
+  function getWhatsappLink() {
+    if (!waInstance?.phone) return ''
+    const clean = waInstance.phone.replace(/\D/g, '').replace(/@.*/, '')
+    return `https://wa.me/${clean}`
+  }
+
+  function downloadQR() {
+    const canvas = document.querySelector('#wa-qr-canvas canvas')
+    if (!canvas) return
+    const url = canvas.toDataURL('image/png')
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `whatsapp-${form.companyName || 'empresa'}.png`
+    a.click()
+  }
+
   if (loading) return <p className="dark:text-gray-300">Carregando...</p>
 
   const mapUrl = getMapUrl()
@@ -167,13 +209,23 @@ export default function Company() {
     <div className="max-w-4xl">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-800 dark:text-white">Minha Empresa</h1>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="flex items-center gap-2 px-6 py-3 md:px-5 md:py-2.5 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition-colors disabled:opacity-50 text-base md:text-sm font-medium"
-        >
-          <FiSave className="w-5 h-5 md:w-4 md:h-4" /> {saving ? 'Salvando...' : 'Salvar'}
-        </button>
+        <div className="flex items-center gap-3">
+          {waInstance?.phone && (
+            <button
+              onClick={() => setShowWhatsappModal(true)}
+              className="flex items-center gap-2 px-4 py-3 md:px-4 md:py-2.5 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors text-base md:text-sm font-medium"
+            >
+              <FaWhatsapp className="w-5 h-5 md:w-4 md:h-4" /> <span className="hidden md:inline">QR Code WhatsApp</span>
+            </button>
+          )}
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex items-center gap-2 px-6 py-3 md:px-5 md:py-2.5 bg-pink-500 text-white rounded-lg hover:bg-pink-600 transition-colors disabled:opacity-50 text-base md:text-sm font-medium"
+          >
+            <FiSave className="w-5 h-5 md:w-4 md:h-4" /> {saving ? 'Salvando...' : 'Salvar'}
+          </button>
+        </div>
       </div>
 
       <div className="space-y-6">
@@ -440,6 +492,68 @@ export default function Company() {
           )}
         </div>
       </div>
+
+      {/* Modal QR Code WhatsApp */}
+      <Modal isOpen={showWhatsappModal} onClose={() => setShowWhatsappModal(false)} title="WhatsApp da sua Loja" maxWidth="max-w-md">
+        <div className="text-center space-y-5">
+          <div className="bg-green-50 dark:bg-green-900/20 rounded-xl p-4">
+            <FaWhatsapp className="w-10 h-10 text-green-500 mx-auto mb-2" />
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              Compartilhe este QR Code para que seus clientes adicionem o número da sua loja no WhatsApp
+            </p>
+          </div>
+
+          {waInstance?.phone && (
+            <div className="space-y-4">
+              <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-3">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Número do WhatsApp</p>
+                <p className="text-lg font-bold text-gray-800 dark:text-white">{formatPhone(waInstance.phone)}</p>
+              </div>
+
+              <div id="wa-qr-canvas" className="flex justify-center p-4 bg-white rounded-xl">
+                <QRCodeCanvas
+                  value={getWhatsappLink()}
+                  size={220}
+                  level="H"
+                  imageSettings={{
+                    src: form.logoUrl || '',
+                    height: 40,
+                    width: 40,
+                    excavate: true,
+                  }}
+                />
+              </div>
+
+              <div className="space-y-3">
+                <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">Como usar:</p>
+                <div className="text-left space-y-2">
+                  <div className="flex items-start gap-3 text-sm text-gray-600 dark:text-gray-400">
+                    <span className="bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full w-6 h-6 flex items-center justify-center shrink-0 font-bold text-xs">1</span>
+                    <span>Imprima ou compartilhe o QR Code com seus clientes</span>
+                  </div>
+                  <div className="flex items-start gap-3 text-sm text-gray-600 dark:text-gray-400">
+                    <span className="bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full w-6 h-6 flex items-center justify-center shrink-0 font-bold text-xs">2</span>
+                    <span>O cliente escaneia com a camera do celular</span>
+                  </div>
+                  <div className="flex items-start gap-3 text-sm text-gray-600 dark:text-gray-400">
+                    <span className="bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full w-6 h-6 flex items-center justify-center shrink-0 font-bold text-xs">3</span>
+                    <span>Ele sera redirecionado para uma conversa com sua loja no WhatsApp</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={downloadQR}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors font-medium"
+                >
+                  <FiDownload size={18} /> Baixar QR Code
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   )
 }
