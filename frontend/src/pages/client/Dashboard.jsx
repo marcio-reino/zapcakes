@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import api from '../../services/api.js'
-import { FiCalendar, FiShoppingBag, FiTrendingUp, FiDollarSign, FiAlertCircle, FiCheckCircle, FiClock, FiX, FiUpload, FiFile, FiImage } from 'react-icons/fi'
+import { FiCalendar, FiShoppingBag, FiTrendingUp, FiDollarSign, FiAlertCircle, FiCheckCircle, FiClock, FiX, FiUpload, FiFile, FiImage, FiShare2 } from 'react-icons/fi'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { QRCodeSVG } from 'qrcode.react'
 import Modal from '../../components/Modal.jsx'
@@ -27,8 +27,14 @@ export default function ClientDashboard() {
   const [paymentHistory, setPaymentHistory] = useState([])
   const [historyLoading, setHistoryLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [agentPhone, setAgentPhone] = useState(null)
+  const [companyName, setCompanyName] = useState('')
 
   useEffect(() => {
+    api.get('/evo-agent/status').then(({ data }) => {
+      if (data.whatsapp?.phone) setAgentPhone(data.whatsapp.phone)
+    }).catch(() => {})
+
     api.get('/dashboard/chart').then(({ data }) => setChartData(data)).catch(() => {})
     api.get('/company/pending-payment').then(({ data }) => setPendingPayment(data)).catch(() => {})
 
@@ -40,6 +46,7 @@ export default function ClientDashboard() {
         planStartedAt: data.planStartedAt,
         planExpiresAt: data.planExpiresAt,
       })
+      if (data.companyName) setCompanyName(data.companyName)
     }).catch(() => {})
 
     api.get('/orders').then(({ data }) => {
@@ -172,8 +179,31 @@ export default function ClientDashboard() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-800 dark:text-white mb-2">Bem-vindo, {user?.name}!</h1>
-      <p className="text-gray-500 dark:text-gray-400 mb-8">Sistema de pedidos inteligente</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800 dark:text-white mb-2">Bem-vindo, {user?.name}!</h1>
+          <p className="text-gray-500 dark:text-gray-400">Sistema de pedidos inteligente</p>
+        </div>
+
+        {agentPhone && (
+          <div className="flex flex-col items-start sm:items-end gap-1">
+            <p className="text-sm text-gray-500 dark:text-gray-400">Compartilhe seu atendimento com seus clientes</p>
+            <button
+              onClick={() => {
+                const phone = agentPhone.replace(/\D/g, '')
+                const msg = companyName
+                  ? `Olá! Conheça a *${companyName}*! 🍰\nFaça seu pedido de forma rápida e fácil pelo nosso atendimento no WhatsApp:\nhttps://wa.me/${phone}`
+                  : `Faça seu pedido de forma rápida e fácil pelo nosso atendimento no WhatsApp:\nhttps://wa.me/${phone}`
+                window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`, '_blank')
+              }}
+              className="flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white font-semibold rounded-xl hover:bg-green-700 transition-all hover:-translate-y-0.5 shadow-md shadow-green-600/30 text-sm"
+            >
+              <FiShare2 size={18} />
+              Compartilhar
+            </button>
+          </div>
+        )}
+      </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-20">
