@@ -103,6 +103,45 @@ app.get('/api/public/site-config', async () => {
   return result
 })
 
+// Analytics — registrar visita ao site (público)
+app.post('/api/public/track', async (request, reply) => {
+  try {
+    const { page } = request.body || {}
+    if (!page) return reply.status(400).send({ error: 'page required' })
+
+    const forwarded = request.headers['x-forwarded-for']
+    const ip = forwarded ? forwarded.split(',')[0].trim() : request.ip
+
+    // Tenta geolocalização via ip-api.com (grátis, sem chave)
+    let city = null, region = null, country = null
+    try {
+      const geoRes = await fetch(`http://ip-api.com/json/${ip}?fields=city,regionName,countryCode&lang=pt-BR`)
+      if (geoRes.ok) {
+        const geo = await geoRes.json()
+        city = geo.city || null
+        region = geo.regionName || null
+        country = geo.countryCode || null
+      }
+    } catch { /* silencioso */ }
+
+    await prisma.siteVisit.create({
+      data: {
+        page: page.slice(0, 100),
+        ip: ip?.slice(0, 45) || null,
+        city,
+        region,
+        country,
+        userAgent: (request.headers['user-agent'] || '').slice(0, 500) || null,
+      },
+    })
+
+    return { ok: true }
+  } catch (err) {
+    console.error('Track error:', err.message)
+    return { ok: true } // não bloqueia o site
+  }
+})
+
 app.get('/api/public/plans', async () => {
   const plans = await prisma.plan.findMany({
     where: { active: true },

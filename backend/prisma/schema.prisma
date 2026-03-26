@@ -592,6 +592,20 @@ model Message {
   @@map("messages")
 }
 
+// Visitas ao site (analytics)
+model SiteVisit {
+  id        Int      @id @default(autoincrement())
+  page      String   @db.VarChar(100) // 'home', 'register', etc
+  ip        String?  @db.VarChar(45)
+  city      String?  @db.VarChar(100)
+  region    String?  @db.VarChar(100)
+  country   String?  @db.VarChar(10)
+  userAgent String?  @map("user_agent") @db.VarChar(500)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("site_visits")
+}
+
 // Configurações do sistema (chave pix, instruções, etc)
 model SystemConfig {
   id    Int    @id @default(autoincrement())

@@ -50,6 +50,9 @@ export async function superadminRoutes(app) {
   // IA / OpenAI
   app.get('/ai/status', controller.aiStatus)
 
+  // Analytics do site
+  app.get('/site-analytics', controller.siteAnalytics)
+
   // Config
   app.get('/config', controller.getConfig)
   app.put('/config', controller.updateConfig)

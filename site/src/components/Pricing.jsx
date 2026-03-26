@@ -5,6 +5,14 @@ const LOGIN_URL = import.meta.env.VITE_LOGIN_URL || '/login'
 const API_URL = import.meta.env.VITE_API_URL || '/api'
 const REGISTER_URL = `${LOGIN_URL}?mode=register`
 
+function trackRegister() {
+  fetch(`${API_URL}/public/track`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ page: 'register' }),
+  }).catch(() => {})
+}
+
 function parseFeatures(raw) {
   if (!raw) return []
   try { return JSON.parse(raw) } catch { return [] }
@@ -94,6 +102,7 @@ export default function Pricing() {
                     href={REGISTER_URL}
                     target="_blank"
                     rel="noopener noreferrer"
+                    onClick={trackRegister}
                     className="block w-full py-4 bg-primary-600 text-white font-semibold rounded-xl hover:bg-primary-700 transition-all hover:-translate-y-0.5 shadow-lg shadow-green-600/30 text-base text-center"
                   >
                     Começar {plan.trialDays || 15} dias grátis

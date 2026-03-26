@@ -2,6 +2,15 @@ import { HiArrowRight } from 'react-icons/hi'
 
 const LOGIN_URL = import.meta.env.VITE_LOGIN_URL || '/login'
 const REGISTER_URL = `${LOGIN_URL}?mode=register`
+const API_URL = import.meta.env.VITE_API_URL || '/api'
+
+function trackRegister() {
+  fetch(`${API_URL}/public/track`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ page: 'register' }),
+  }).catch(() => {})
+}
 
 export default function FinalCTA() {
   return (
@@ -19,6 +28,7 @@ export default function FinalCTA() {
           href={REGISTER_URL}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={trackRegister}
           className="reveal reveal-delay-2 inline-flex items-center gap-2 px-10 py-4 bg-white text-primary-700 font-bold rounded-xl shadow-xl hover:-translate-y-0.5 hover:shadow-2xl transition-all text-base"
         >
           Começar Grátis Agora

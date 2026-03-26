@@ -1,5 +1,16 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { useEffect } from 'react'
 import { useReveal } from './hooks/useReveal'
+
+const API_URL = import.meta.env.VITE_API_URL || '/api'
+
+function trackPage(page) {
+  fetch(`${API_URL}/public/track`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ page }),
+  }).catch(() => {})
+}
 import Header from './components/Header'
 import Hero from './components/Hero'
 import SocialProof from './components/SocialProof'
@@ -17,6 +28,8 @@ import Privacidade from './pages/Privacidade'
 
 function HomePage() {
   const revealRef = useReveal()
+
+  useEffect(() => { trackPage('home') }, [])
 
   return (
     <div ref={revealRef}>

@@ -5,6 +5,15 @@ import celularImg from '../assets/images/celular.png'
 
 const LOGIN_URL = import.meta.env.VITE_LOGIN_URL || '/login'
 const REGISTER_URL = `${LOGIN_URL}?mode=register`
+const API_URL = import.meta.env.VITE_API_URL || '/api'
+
+function trackRegister() {
+  fetch(`${API_URL}/public/track`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ page: 'register' }),
+  }).catch(() => {})
+}
 
 export default function Hero() {
   const [siteData, setSiteData] = useState({})
@@ -46,7 +55,7 @@ export default function Hero() {
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center md:justify-start opacity-0 animate-fade-in-delay-2">
-            <a href={REGISTER_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-primary-600 text-white font-semibold rounded-xl hover:bg-primary-700 transition-all hover:-translate-y-0.5 shadow-lg shadow-green-600/30 text-base">
+            <a href={REGISTER_URL} target="_blank" rel="noopener noreferrer" onClick={trackRegister} className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-primary-600 text-white font-semibold rounded-xl hover:bg-primary-700 transition-all hover:-translate-y-0.5 shadow-lg shadow-green-600/30 text-base">
               <HiPhone className="text-lg" />
               Quero Experimentar Grátis
             </a>

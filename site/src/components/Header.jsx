@@ -4,6 +4,15 @@ import logo from '../assets/images/Logo.svg'
 
 const LOGIN_URL = import.meta.env.VITE_LOGIN_URL || '/login'
 const REGISTER_URL = `${LOGIN_URL}?mode=register`
+const API_URL = import.meta.env.VITE_API_URL || '/api'
+
+function trackRegister() {
+  fetch(`${API_URL}/public/track`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ page: 'register' }),
+  }).catch(() => {})
+}
 
 export default function Header() {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -43,7 +52,7 @@ export default function Header() {
           <a href={LOGIN_URL} target="_blank" rel="noopener noreferrer" className="px-5 py-2.5 text-sm font-semibold text-primary-700 border-2 border-primary-600 rounded-lg hover:bg-primary-50 transition-all">
             Login
           </a>
-          <a href={REGISTER_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-6 py-2.5 bg-primary-600 text-white text-sm font-semibold rounded-lg hover:bg-primary-700 transition-all hover:-translate-y-0.5 shadow-md shadow-green-600/30">
+          <a href={REGISTER_URL} target="_blank" rel="noopener noreferrer" onClick={trackRegister} className="inline-flex items-center gap-2 px-6 py-2.5 bg-primary-600 text-white text-sm font-semibold rounded-lg hover:bg-primary-700 transition-all hover:-translate-y-0.5 shadow-md shadow-green-600/30">
             Começar Agora
           </a>
         </div>
@@ -65,7 +74,7 @@ export default function Header() {
           <a href={LOGIN_URL} onClick={() => setMenuOpen(false)} className="mt-2 text-center px-6 py-3 border-2 border-primary-600 text-primary-700 font-semibold rounded-lg">
             Login
           </a>
-          <a href={REGISTER_URL} target="_blank" rel="noopener noreferrer" onClick={() => setMenuOpen(false)} className="text-center px-6 py-3 bg-primary-600 text-white font-semibold rounded-lg">
+          <a href={REGISTER_URL} target="_blank" rel="noopener noreferrer" onClick={() => { setMenuOpen(false); trackRegister() }} className="text-center px-6 py-3 bg-primary-600 text-white font-semibold rounded-lg">
             Começar Agora
           </a>
         </nav>

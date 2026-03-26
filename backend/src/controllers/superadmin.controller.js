@@ -944,4 +944,57 @@ export class SuperadminController {
 
     return { message: 'Configurações salvas' }
   }
+
+  // Analytics do site
+  async siteAnalytics(request, reply) {
+    const now = new Date()
+
+    // Início do dia (UTC)
+    const todayStart = new Date(now)
+    todayStart.setUTCHours(0, 0, 0, 0)
+
+    // Início do mês (UTC)
+    const monthStart = new Date(now.getUTCFullYear(), now.getUTCMonth(), 1)
+
+    const [todayVisits, monthVisits, todayRegister, monthRegister, recentVisits, topCities] = await Promise.all([
+      prisma.siteVisit.count({
+        where: { page: 'home', createdAt: { gte: todayStart } },
+      }),
+      prisma.siteVisit.count({
+        where: { page: 'home', createdAt: { gte: monthStart } },
+      }),
+      prisma.siteVisit.count({
+        where: { page: 'register', createdAt: { gte: todayStart } },
+      }),
+      prisma.siteVisit.count({
+        where: { page: 'register', createdAt: { gte: monthStart } },
+      }),
+      prisma.siteVisit.findMany({
+        where: { createdAt: { gte: todayStart } },
+        select: { page: true, city: true, region: true, createdAt: true },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      }),
+      prisma.siteVisit.groupBy({
+        by: ['city', 'region'],
+        where: { createdAt: { gte: monthStart }, city: { not: null } },
+        _count: true,
+        orderBy: { _count: { city: 'desc' } },
+        take: 10,
+      }),
+    ])
+
+    return {
+      todayVisits,
+      monthVisits,
+      todayRegister,
+      monthRegister,
+      recentVisits,
+      topCities: topCities.map(c => ({
+        city: c.city,
+        region: c.region,
+        count: c._count,
+      })),
+    }
+  }
 }
