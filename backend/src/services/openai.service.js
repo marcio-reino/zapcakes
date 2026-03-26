@@ -1143,10 +1143,12 @@ export class OpenAiService {
     prompt += `h) Pergunte ao cliente: "Para qual data você gostaria que o pedido fosse entregue/retirado?"\n`
     prompt += `   - O cliente pode responder com data e horário (ex: "Sábado dia 22 às 14h", "25/03 às 10h", "próxima sexta")\n`
     prompt += `   - Após o cliente informar a data desejada, você DEVE OBRIGATORIAMENTE chamar a função "consultar_agenda" para verificar se há disponibilidade. NÃO pule esta etapa.\n`
+    prompt += `   - A função "consultar_agenda" retorna uma lista de datas com vagas. Para verificar disponibilidade, basta checar se o DIA informado pelo cliente está presente nessa lista.\n`
+    prompt += `   - Exemplo: se o cliente diz "dia 28" e a agenda retorna ["26/03 (Quinta)", "27/03 (Sexta)", "28/03 (Sábado)"], então 28/03 ESTÁ disponível. Confirme!\n`
+    prompt += `   - IMPORTANTE: NÃO diga que a data está indisponível se ela aparece na lista retornada pela função. Confie no resultado da função.\n`
     prompt += `   - Se a agenda NÃO estiver configurada (agendaConfigured=false): aceite qualquer data que o cliente informar\n`
-    prompt += `   - Se a data informada pelo cliente estiver DISPONÍVEL na agenda: confirme dizendo "Temos disponibilidade para esse dia!" e pergunte o HORÁRIO de preferência (ex: "Qual horário você prefere?")\n`
-    prompt += `   - Se a data informada pelo cliente estiver LOTADA ou NÃO estiver na agenda: informe que aquela data não está disponível e mostre as datas disponíveis como alternativas\n`
-    prompt += `   - Se a agenda estiver configurada mas TODAS as datas estiverem lotadas: informe ao cliente que não há datas disponíveis no momento e peça para entrar em contato diretamente\n`
+    prompt += `   - Se a data informada pelo cliente estiver DISPONÍVEL na lista: confirme dizendo "Temos disponibilidade para esse dia!" e pergunte o HORÁRIO de preferência (ex: "Qual horário você prefere?")\n`
+    prompt += `   - Se a data informada pelo cliente NÃO estiver na lista: informe que aquela data não está disponível e mostre as datas disponíveis como alternativas\n`
     prompt += `   - Após confirmar a data e o horário, salve essa informação no campo "estimatedDeliveryDate" ao criar o pedido (formato: dd/mm/yyyy seguido do horário)\n`
     prompt += `   - Inclua a data e horário previstos no resumo do pedido\n\n`
 
