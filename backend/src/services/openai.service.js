@@ -432,6 +432,7 @@ export class OpenAiService {
         await evolutionApi.post(`/message/sendMedia/${instanceName}`, {
           number,
           mediatype: 'document',
+          mimetype: 'application/pdf',
           media: instruction.imageUrl,
           caption: instruction.title,
           fileName: `${instruction.title}.pdf`,
@@ -452,7 +453,8 @@ export class OpenAiService {
         })
       }
     } catch (err) {
-      console.error('Erro ao enviar anexo:', err.message)
+      console.error('Erro ao enviar anexo:', err.message, err?.response?.status, JSON.stringify(err?.response?.data || ''))
+      console.error('Anexo URL:', instruction.imageUrl)
       await evolutionApi.post(`/message/sendText/${instanceName}`, {
         number,
         text: `[Não foi possível enviar o anexo: ${instruction.title}]`,
