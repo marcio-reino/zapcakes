@@ -43,6 +43,8 @@ import StoreOrderConfirmation from './pages/store/StoreOrderConfirmation.jsx'
 import StoreMyOrders from './pages/store/StoreMyOrders.jsx'
 import StoreAccount from './pages/store/StoreAccount.jsx'
 import StoreChangePassword from './pages/store/StoreChangePassword.jsx'
+import StoreTermos from './pages/store/StoreTermos.jsx'
+import StorePrivacidade from './pages/store/StorePrivacidade.jsx'
 
 // Client store settings
 import StoreSite from './pages/client/StoreSite.jsx'
@@ -132,6 +134,8 @@ export default function App() {
         <Route path="meus-pedidos" element={<StoreMyOrders />} />
         <Route path="minha-conta" element={<StoreAccount />} />
         <Route path="alterar-senha" element={<StoreChangePassword />} />
+        <Route path="termos-de-uso" element={<StoreTermos />} />
+        <Route path="privacidade" element={<StorePrivacidade />} />
       </Route>
 
       {/* Redirect */}

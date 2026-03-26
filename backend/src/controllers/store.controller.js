@@ -5,6 +5,9 @@ import { AccountService } from '../services/account.service.js'
 import openai from '../config/openai.js'
 import evolutionApi from '../config/evolution.js'
 
+// Armazena códigos de recuperação: { `${userId}_${phone}`: { customerId, code, expiresAt } }
+const resetCodes = new Map()
+
 async function resolveSlug(slug, reply) {
   const account = await prisma.account.findFirst({
     where: { slug, storeActive: true },
@@ -515,6 +518,121 @@ Seja tolerante — aceite imagens de paletas de cores, decorações, temas de fe
       // Em caso de erro na IA, aprovar para não bloquear o pedido
       return { approved: true, message: 'Validação indisponível, imagens aceitas' }
     }
+  }
+
+  // POST /api/store/:slug/customer/forgot-password — envia código via WhatsApp
+  async customerForgotPassword(request, reply) {
+    const { slug } = request.params
+    const { phone } = request.body
+    const account = await resolveSlug(slug, reply)
+    if (!account) return
+
+    if (!phone) return reply.status(400).send({ error: 'Celular é obrigatório' })
+
+    const customer = await prisma.customer.findFirst({
+      where: { userId: account.userId, phone, active: true },
+    })
+    if (!customer) {
+      return reply.status(404).send({ error: 'Nenhuma conta encontrada com este celular' })
+    }
+
+    const code = String(Math.floor(100000 + Math.random() * 900000))
+    const expiresAt = Date.now() + 10 * 60 * 1000
+
+    resetCodes.set(`${account.userId}_${phone}`, { customerId: customer.id, code, expiresAt })
+
+    // Limpa códigos expirados
+    for (const [k, v] of resetCodes) {
+      if (v.expiresAt < Date.now()) resetCodes.delete(k)
+    }
+
+    // Envia código via WhatsApp (instância do sistema)
+    try {
+      const instance = await prisma.instance.findFirst({
+        where: { instanceName: 'ZapCakes-System', status: 'CONNECTED' },
+      })
+      if (instance) {
+        const digits = phone.replace(/\D/g, '')
+        const number = digits.startsWith('55') ? digits : `55${digits}`
+
+        await evolutionApi.post(`/message/sendText/${instance.instanceName}`, {
+          number,
+          text: `*${account.companyName}*\nUse o codigo ${code} para informar uma nova senha de acesso.`,
+        })
+      } else {
+        console.error('[ForgotPassword] Instância ZapCakes-System não conectada')
+        return reply.status(500).send({ error: 'Serviço de WhatsApp indisponível no momento' })
+      }
+    } catch (err) {
+      console.error('[ForgotPassword] Erro ao enviar WhatsApp:', err.message)
+      return reply.status(500).send({ error: 'Erro ao enviar código via WhatsApp' })
+    }
+
+    return { success: true }
+  }
+
+  // POST /api/store/:slug/customer/verify-reset-code — verifica código
+  async customerVerifyResetCode(request, reply) {
+    const { slug } = request.params
+    const { phone, code } = request.body
+    const account = await resolveSlug(slug, reply)
+    if (!account) return
+
+    if (!phone || !code) return reply.status(400).send({ error: 'Celular e código são obrigatórios' })
+
+    const key = `${account.userId}_${phone}`
+    const entry = resetCodes.get(key)
+
+    if (!entry) return reply.status(400).send({ error: 'Código não encontrado. Solicite um novo.' })
+    if (entry.expiresAt < Date.now()) {
+      resetCodes.delete(key)
+      return reply.status(400).send({ error: 'Código expirado. Solicite um novo.' })
+    }
+    if (entry.code !== code) return reply.status(400).send({ error: 'Código inválido' })
+
+    return { valid: true }
+  }
+
+  // POST /api/store/:slug/customer/reset-password — redefine senha e faz login
+  async customerResetPassword(request, reply) {
+    const { slug } = request.params
+    const { phone, code, password } = request.body
+    const account = await resolveSlug(slug, reply)
+    if (!account) return
+
+    if (!phone || !code || !password) {
+      return reply.status(400).send({ error: 'Celular, código e nova senha são obrigatórios' })
+    }
+    if (password.length < 4) {
+      return reply.status(400).send({ error: 'Senha deve ter no mínimo 4 caracteres' })
+    }
+
+    const key = `${account.userId}_${phone}`
+    const entry = resetCodes.get(key)
+
+    if (!entry) return reply.status(400).send({ error: 'Código não encontrado. Solicite um novo.' })
+    if (entry.expiresAt < Date.now()) {
+      resetCodes.delete(key)
+      return reply.status(400).send({ error: 'Código expirado. Solicite um novo.' })
+    }
+    if (entry.code !== code) return reply.status(400).send({ error: 'Código inválido' })
+
+    const hashed = await bcrypt.hash(password, 10)
+    const customer = await prisma.customer.update({
+      where: { id: entry.customerId },
+      data: { password: hashed },
+    })
+
+    resetCodes.delete(key)
+
+    // Auto-login
+    const token = request.server.jwt.sign(
+      { customerId: customer.id, userId: account.userId, type: 'customer' },
+      { expiresIn: '30d' },
+    )
+
+    const { password: _, ...safe } = customer
+    return { token, customer: safe }
   }
 
   // POST /api/store/:slug/orders/:orderId/payment-proof — upload comprovante PIX

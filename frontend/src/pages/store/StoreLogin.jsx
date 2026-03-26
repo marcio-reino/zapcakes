@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import { useStoreAuth } from '../../contexts/StoreAuthContext.jsx'
-import { FiPhone, FiLock, FiUser, FiArrowRight, FiLoader } from 'react-icons/fi'
+import { FiPhone, FiLock, FiUser, FiArrowLeft } from 'react-icons/fi'
 import toast from 'react-hot-toast'
+import storeApi from '../../services/storeApi.js'
 
 function maskPhone(v) {
   const n = v.replace(/\D/g, '').slice(0, 11)
@@ -11,7 +12,7 @@ function maskPhone(v) {
 
 export default function StoreLogin() {
   const { slug, store } = useOutletContext()
-  const { login, register } = useStoreAuth()
+  const { login, register, loginWithToken } = useStoreAuth()
   const navigate = useNavigate()
   const [tab, setTab] = useState('login')
   const [loading, setLoading] = useState(false)
@@ -26,6 +27,103 @@ export default function StoreLogin() {
   const [regName, setRegName] = useState('')
   const [regPhone, setRegPhone] = useState('')
   const [regPassword, setRegPassword] = useState('')
+
+  // Forgot password
+  const [forgotStep, setForgotStep] = useState(null) // null | 'phone' | 'code' | 'newpass'
+  const [forgotPhone, setForgotPhone] = useState('')
+  const [forgotCode, setForgotCode] = useState(['', '', '', '', '', ''])
+  const [forgotNewPass, setForgotNewPass] = useState('')
+  const codeRefs = useRef([])
+
+  function startForgotPassword() {
+    setForgotPhone(phone || '')
+    setForgotCode(['', '', '', '', '', ''])
+    setForgotNewPass('')
+    setForgotStep('phone')
+  }
+
+  function cancelForgotPassword() {
+    setForgotStep(null)
+  }
+
+  async function handleForgotSendCode(e) {
+    e.preventDefault()
+    const raw = forgotPhone.trim().replace(/\D/g, '')
+    if (raw.length < 10) return toast.error('Digite um celular valido')
+    setLoading(true)
+    try {
+      await storeApi.post(`/store/${slug}/customer/forgot-password`, { phone: raw })
+      toast.success('Codigo enviado via WhatsApp!')
+      setForgotStep('code')
+      setTimeout(() => codeRefs.current[0]?.focus(), 100)
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Erro ao enviar codigo')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function handleCodeChange(index, value) {
+    if (!/^\d?$/.test(value)) return
+    const next = [...forgotCode]
+    next[index] = value
+    setForgotCode(next)
+    if (value && index < 5) {
+      codeRefs.current[index + 1]?.focus()
+    }
+  }
+
+  function handleCodeKeyDown(index, e) {
+    if (e.key === 'Backspace' && !forgotCode[index] && index > 0) {
+      codeRefs.current[index - 1]?.focus()
+    }
+  }
+
+  function handleCodePaste(e) {
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6)
+    if (pasted.length === 6) {
+      e.preventDefault()
+      setForgotCode(pasted.split(''))
+      codeRefs.current[5]?.focus()
+    }
+  }
+
+  async function handleVerifyCode(e) {
+    e.preventDefault()
+    const code = forgotCode.join('')
+    if (code.length !== 6) return toast.error('Digite o codigo completo')
+    const raw = forgotPhone.trim().replace(/\D/g, '')
+    setLoading(true)
+    try {
+      await storeApi.post(`/store/${slug}/customer/verify-reset-code`, { phone: raw, code })
+      toast.success('Codigo verificado!')
+      setForgotStep('newpass')
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Codigo invalido')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleResetPassword(e) {
+    e.preventDefault()
+    if (forgotNewPass.length < 4) return toast.error('Senha deve ter no minimo 4 caracteres')
+    const raw = forgotPhone.trim().replace(/\D/g, '')
+    const code = forgotCode.join('')
+    setLoading(true)
+    try {
+      const { data } = await storeApi.post(`/store/${slug}/customer/reset-password`, {
+        phone: raw, code, password: forgotNewPass,
+      })
+      loginWithToken(data.token, data.customer)
+      toast.success('Senha alterada com sucesso!')
+      navigate(`/loja/${slug}/carrinho`)
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Erro ao redefinir senha')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   async function handleLogin(e) {
     e.preventDefault()
@@ -66,6 +164,135 @@ export default function StoreLogin() {
     } finally {
       setLoading(false)
     }
+  }
+
+  // Render forgot password flow
+  if (forgotStep) {
+    return (
+      <div className="max-w-lg mx-auto px-4 py-6">
+        <div className="text-center mb-6">
+          {store?.logoUrl ? (
+            <img src={store.logoUrl} alt="" className="w-16 h-16 rounded-full object-cover mx-auto mb-3 shadow-md" />
+          ) : (
+            <div className="w-16 h-16 rounded-full bg-green-100 mx-auto mb-3 flex items-center justify-center shadow-md">
+              <span className="text-green-600 font-bold text-2xl">{store?.companyName?.[0] || 'Z'}</span>
+            </div>
+          )}
+          <h1 className="text-xl font-bold text-gray-800">Recuperar senha</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            {forgotStep === 'phone' && 'Digite seu celular para receber o codigo via WhatsApp'}
+            {forgotStep === 'code' && 'Digite o codigo que enviamos para seu WhatsApp'}
+            {forgotStep === 'newpass' && 'Crie uma nova senha de acesso'}
+          </p>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden p-6">
+          {forgotStep === 'phone' && (
+            <form onSubmit={handleForgotSendCode} className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Celular</label>
+                <div className="relative">
+                  <FiPhone size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="tel"
+                    value={forgotPhone}
+                    onChange={e => setForgotPhone(maskPhone(e.target.value))}
+                    placeholder="(22) 99999-9999"
+                    className="w-full pl-10 pr-4 py-4 border border-gray-200 rounded-xl text-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none bg-gray-50 focus:bg-white transition-colors"
+                    required
+                    autoFocus
+                  />
+                </div>
+              </div>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-4 bg-green-600 text-white rounded-xl font-bold text-lg hover:bg-green-700 transition-all disabled:opacity-50 shadow-lg shadow-green-600/20 active:scale-[0.98]"
+              >
+                {loading ? 'Enviando...' : 'Enviar codigo via WhatsApp'}
+              </button>
+              <button
+                type="button"
+                onClick={cancelForgotPassword}
+                className="w-full py-3 text-gray-500 font-semibold text-base hover:text-gray-700 transition-colors flex items-center justify-center gap-2"
+              >
+                <FiArrowLeft size={16} /> Voltar ao login
+              </button>
+            </form>
+          )}
+
+          {forgotStep === 'code' && (
+            <form onSubmit={handleVerifyCode} className="space-y-5">
+              <div>
+                <label className="block text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3 text-center">Codigo de verificacao</label>
+                <div className="flex justify-center gap-2" onPaste={handleCodePaste}>
+                  {forgotCode.map((digit, i) => (
+                    <input
+                      key={i}
+                      ref={el => codeRefs.current[i] = el}
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={1}
+                      value={digit}
+                      onChange={e => handleCodeChange(i, e.target.value)}
+                      onKeyDown={e => handleCodeKeyDown(i, e)}
+                      className="w-12 h-14 text-center text-2xl font-bold border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none bg-gray-50 focus:bg-white transition-colors"
+                    />
+                  ))}
+                </div>
+                <p className="text-xs text-gray-400 text-center mt-2">Verifique seu WhatsApp</p>
+              </div>
+              <button
+                type="submit"
+                disabled={loading || forgotCode.join('').length !== 6}
+                className="w-full py-4 bg-green-600 text-white rounded-xl font-bold text-lg hover:bg-green-700 transition-all disabled:opacity-50 shadow-lg shadow-green-600/20 active:scale-[0.98]"
+              >
+                {loading ? 'Verificando...' : 'Verificar codigo'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setForgotStep('phone')}
+                className="w-full py-3 text-gray-500 font-semibold text-base hover:text-gray-700 transition-colors flex items-center justify-center gap-2"
+              >
+                <FiArrowLeft size={16} /> Reenviar codigo
+              </button>
+            </form>
+          )}
+
+          {forgotStep === 'newpass' && (
+            <form onSubmit={handleResetPassword} className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Nova senha</label>
+                <div className="relative">
+                  <FiLock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="password"
+                    value={forgotNewPass}
+                    onChange={e => setForgotNewPass(e.target.value)}
+                    placeholder="Minimo 4 caracteres"
+                    minLength={4}
+                    className="w-full pl-10 pr-4 py-4 border border-gray-200 rounded-xl text-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none bg-gray-50 focus:bg-white transition-colors"
+                    required
+                    autoFocus
+                  />
+                </div>
+              </div>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-4 bg-green-600 text-white rounded-xl font-bold text-lg hover:bg-green-700 transition-all disabled:opacity-50 shadow-lg shadow-green-600/20 active:scale-[0.98]"
+              >
+                {loading ? 'Salvando...' : 'Salvar nova senha e entrar'}
+              </button>
+            </form>
+          )}
+        </div>
+
+        <p className="text-center text-xs text-gray-400 mt-6">
+          O codigo expira em 10 minutos.
+        </p>
+      </div>
+    )
   }
 
   return (
@@ -122,7 +349,7 @@ export default function StoreLogin() {
           </button>
         </div>
 
-        {/* Formulários */}
+        {/* Formularios */}
         <div className="p-6">
           {tab === 'login' ? (
             <form onSubmit={handleLogin} className="space-y-4">
@@ -162,7 +389,17 @@ export default function StoreLogin() {
                 {loading ? 'Entrando...' : 'Entrar'}
               </button>
 
-              <p className="text-center text-base text-gray-500 pt-3">
+              <div className="text-center pt-1">
+                <button
+                  type="button"
+                  onClick={startForgotPassword}
+                  className="text-sm text-green-600 font-semibold hover:underline"
+                >
+                  Esqueci minha senha
+                </button>
+              </div>
+
+              <p className="text-center text-base text-gray-500 pt-2">
                 Ainda não tem conta?{' '}
                 <button type="button" onClick={() => setTab('register')} className="text-green-600 font-bold hover:underline">
                   Cadastre-se
@@ -207,7 +444,7 @@ export default function StoreLogin() {
                     type="password"
                     value={regPassword}
                     onChange={e => setRegPassword(e.target.value)}
-                    placeholder="Mínimo 4 caracteres"
+                    placeholder="Minimo 4 caracteres"
                     minLength={4}
                     className="w-full pl-10 pr-4 py-4 border border-gray-200 rounded-xl text-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none bg-gray-50 focus:bg-white transition-colors"
                     required
@@ -223,7 +460,7 @@ export default function StoreLogin() {
               </button>
 
               <p className="text-center text-base text-gray-500 pt-3">
-                Já tem uma conta?{' '}
+                Ja tem uma conta?{' '}
                 <button type="button" onClick={() => setTab('login')} className="text-green-600 font-bold hover:underline">
                   Entrar
                 </button>
@@ -235,10 +472,10 @@ export default function StoreLogin() {
 
       {/* Footer */}
       <p className="text-center text-xs text-gray-400 mt-6">
-        Seus dados estão protegidos e serão usados apenas para gerenciar seus pedidos.
+        Seus dados estao protegidos e serao usados apenas para gerenciar seus pedidos.
       </p>
 
-      {/* Modal login não encontrado */}
+      {/* Modal login nao encontrado */}
       {showNotFound && (
         <>
           <style>{`
@@ -263,9 +500,9 @@ export default function StoreLogin() {
               <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
                 <span className="text-3xl">😕</span>
               </div>
-              <h3 className="text-lg font-bold text-gray-800 mb-2">Login não encontrado</h3>
+              <h3 className="text-lg font-bold text-gray-800 mb-2">Login nao encontrado</h3>
               <p className="text-sm text-gray-500 mb-6">
-                Não encontramos uma conta com esses dados. Deseja criar uma conta nova?
+                Nao encontramos uma conta com esses dados. Deseja criar uma conta nova?
               </p>
               <div className="flex gap-3">
                 <button
@@ -286,7 +523,7 @@ export default function StoreLogin() {
         </>
       )}
 
-      {/* Modal confirmação de cadastro */}
+      {/* Modal confirmacao de cadastro */}
       {showConfirm && (
         <>
           <style>{`

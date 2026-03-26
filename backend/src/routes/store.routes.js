@@ -12,6 +12,9 @@ export async function storeRoutes(app) {
   app.get('/:slug/delivery-zones', controller.getDeliveryZones)
   app.post('/:slug/customer/login', controller.customerLogin)
   app.post('/:slug/customer/register', controller.customerRegister)
+  app.post('/:slug/customer/forgot-password', controller.customerForgotPassword)
+  app.post('/:slug/customer/verify-reset-code', controller.customerVerifyResetCode)
+  app.post('/:slug/customer/reset-password', controller.customerResetPassword)
 
   // Requer auth de customer
   app.get('/:slug/customer/me', { preHandler: [app.authenticateCustomer] }, controller.customerMe)

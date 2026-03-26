@@ -179,8 +179,17 @@ function StoreContent() {
       <main className="flex-1">
         <Outlet context={{ store, slug }} />
       </main>
-      <footer className="py-4 text-center text-xs text-gray-400 border-t bg-white">
-        Powered by <a href="https://www.zapcakes.com" className="text-green-600 font-medium hover:underline" target="_blank" rel="noopener noreferrer">ZapCakes</a>
+      <footer className="py-4 border-t bg-white">
+        <div className="flex flex-col items-center gap-2 text-xs text-gray-400">
+          <div className="flex gap-3">
+            <Link to={`/loja/${slug}/termos-de-uso`} className="hover:text-gray-600 transition-colors">Termos de Uso</Link>
+            <span>·</span>
+            <Link to={`/loja/${slug}/privacidade`} className="hover:text-gray-600 transition-colors">Privacidade</Link>
+          </div>
+          <span>
+            Powered by <a href="https://www.zapcakes.com" className="text-green-600 font-medium hover:underline" target="_blank" rel="noopener noreferrer">ZapCakes</a>
+          </span>
+        </div>
       </footer>
     </div>
   )

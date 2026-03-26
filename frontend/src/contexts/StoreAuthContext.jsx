@@ -47,6 +47,12 @@ export function StoreAuthProvider({ slug, children }) {
     return data
   }
 
+  function loginWithToken(token, customerData) {
+    localStorage.setItem('zapcakes_store_token', token)
+    localStorage.setItem('zapcakes_store_customer', JSON.stringify(customerData))
+    setCustomer(customerData)
+  }
+
   function logout() {
     localStorage.removeItem('zapcakes_store_token')
     localStorage.removeItem('zapcakes_store_customer')
@@ -54,7 +60,7 @@ export function StoreAuthProvider({ slug, children }) {
   }
 
   return (
-    <StoreAuthContext.Provider value={{ customer, loading, login, register, logout, slug }}>
+    <StoreAuthContext.Provider value={{ customer, loading, login, register, loginWithToken, logout, slug }}>
       {children}
     </StoreAuthContext.Provider>
   )

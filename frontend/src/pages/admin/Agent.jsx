@@ -407,7 +407,8 @@ export default function AdminAgent() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Anexo (imagem, PDF ou áudio)</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Anexo (imagem, PDF ou áudio)</label>
+            <span className="block text-xs text-gray-400 dark:text-gray-500 mb-1.5">Tamanho máximo: 20 MB</span>
             <MediaUpload
               value={form.image}
               onChange={(file) => setForm({ ...form, image: file })}

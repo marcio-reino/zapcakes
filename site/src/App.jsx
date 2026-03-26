@@ -1,3 +1,4 @@
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { useReveal } from './hooks/useReveal'
 import Header from './components/Header'
 import Hero from './components/Hero'
@@ -11,8 +12,10 @@ import FAQ from './components/FAQ'
 import FinalCTA from './components/FinalCTA'
 import Footer from './components/Footer'
 import WhatsAppButton from './components/WhatsAppButton'
+import TermosDeUso from './pages/TermosDeUso'
+import Privacidade from './pages/Privacidade'
 
-function App() {
+function HomePage() {
   const revealRef = useReveal()
 
   return (
@@ -30,6 +33,18 @@ function App() {
       <Footer />
       <WhatsAppButton />
     </div>
+  )
+}
+
+function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/termos-de-uso" element={<TermosDeUso />} />
+        <Route path="/privacidade" element={<Privacidade />} />
+      </Routes>
+    </BrowserRouter>
   )
 }
 
