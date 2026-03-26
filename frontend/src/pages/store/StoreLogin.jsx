@@ -389,17 +389,13 @@ export default function StoreLogin() {
                 {loading ? 'Entrando...' : 'Entrar'}
               </button>
 
-              <div className="text-center pt-1">
-                <button
-                  type="button"
-                  onClick={startForgotPassword}
-                  className="text-sm text-green-600 font-semibold hover:underline"
-                >
+              <p className="text-center text-base text-gray-500 pt-3">
+                <button type="button" onClick={startForgotPassword} className="text-green-600 font-bold hover:underline">
                   Esqueci minha senha
                 </button>
-              </div>
+              </p>
 
-              <p className="text-center text-base text-gray-500 pt-2">
+              <p className="text-center text-base text-gray-500">
                 Ainda não tem conta?{' '}
                 <button type="button" onClick={() => setTab('register')} className="text-green-600 font-bold hover:underline">
                   Cadastre-se

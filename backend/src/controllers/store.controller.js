@@ -8,6 +8,12 @@ import evolutionApi from '../config/evolution.js'
 // Armazena códigos de recuperação: { `${userId}_${phone}`: { customerId, code, expiresAt } }
 const resetCodes = new Map()
 
+// Normaliza telefone para busca: remove não-dígitos e prefixo 55
+function normalizePhone(p) {
+  const digits = (p || '').replace(/\D/g, '')
+  return digits.startsWith('55') && digits.length > 11 ? digits.slice(2) : digits
+}
+
 async function resolveSlug(slug, reply) {
   const account = await prisma.account.findFirst({
     where: { slug, storeActive: true },
@@ -141,9 +147,17 @@ export class StoreController {
       return reply.status(400).send({ error: 'Celular e senha são obrigatórios' })
     }
 
-    const customer = await prisma.customer.findFirst({
+    // Busca por telefone exato ou normalizado
+    const norm = normalizePhone(phone)
+    let customer = await prisma.customer.findFirst({
       where: { userId: account.userId, phone, active: true },
     })
+    if (!customer && norm) {
+      const candidates = await prisma.customer.findMany({
+        where: { userId: account.userId, active: true },
+      })
+      customer = candidates.find(c => normalizePhone(c.phone) === norm) || null
+    }
 
     if (!customer || !customer.password) {
       return reply.status(401).send({ error: 'Credenciais inválidas' })
@@ -529,9 +543,17 @@ Seja tolerante — aceite imagens de paletas de cores, decorações, temas de fe
 
     if (!phone) return reply.status(400).send({ error: 'Celular é obrigatório' })
 
-    const customer = await prisma.customer.findFirst({
+    // Busca por telefone exato ou normalizado
+    const norm = normalizePhone(phone)
+    let customer = await prisma.customer.findFirst({
       where: { userId: account.userId, phone, active: true },
     })
+    if (!customer && norm) {
+      const candidates = await prisma.customer.findMany({
+        where: { userId: account.userId, active: true },
+      })
+      customer = candidates.find(c => normalizePhone(c.phone) === norm) || null
+    }
     if (!customer) {
       return reply.status(404).send({ error: 'Nenhuma conta encontrada com este celular' })
     }
@@ -539,7 +561,7 @@ Seja tolerante — aceite imagens de paletas de cores, decorações, temas de fe
     const code = String(Math.floor(100000 + Math.random() * 900000))
     const expiresAt = Date.now() + 10 * 60 * 1000
 
-    resetCodes.set(`${account.userId}_${phone}`, { customerId: customer.id, code, expiresAt })
+    resetCodes.set(`${account.userId}_${norm}`, { customerId: customer.id, code, expiresAt })
 
     // Limpa códigos expirados
     for (const [k, v] of resetCodes) {
@@ -580,7 +602,7 @@ Seja tolerante — aceite imagens de paletas de cores, decorações, temas de fe
 
     if (!phone || !code) return reply.status(400).send({ error: 'Celular e código são obrigatórios' })
 
-    const key = `${account.userId}_${phone}`
+    const key = `${account.userId}_${normalizePhone(phone)}`
     const entry = resetCodes.get(key)
 
     if (!entry) return reply.status(400).send({ error: 'Código não encontrado. Solicite um novo.' })
@@ -607,7 +629,7 @@ Seja tolerante — aceite imagens de paletas de cores, decorações, temas de fe
       return reply.status(400).send({ error: 'Senha deve ter no mínimo 4 caracteres' })
     }
 
-    const key = `${account.userId}_${phone}`
+    const key = `${account.userId}_${normalizePhone(phone)}`
     const entry = resetCodes.get(key)
 
     if (!entry) return reply.status(400).send({ error: 'Código não encontrado. Solicite um novo.' })
