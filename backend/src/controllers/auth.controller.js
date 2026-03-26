@@ -51,11 +51,6 @@ export class AuthController {
     }
 
     if (!user.active) {
-      // Se já possui account, foi desativado pelo administrador
-      if (user.account) {
-        return reply.status(403).send({ error: 'Conta desativada temporariamente' })
-      }
-
       // Reenvia código de ativação automaticamente
       const code = generateCode()
       const expiresAt = Date.now() + 10 * 60 * 1000
