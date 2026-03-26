@@ -857,8 +857,7 @@ export class OpenAiService {
             const day = String(d.getUTCDate()).padStart(2, '0')
             const month = String(d.getUTCMonth() + 1).padStart(2, '0')
             const weekday = WEEKDAYS[d.getUTCDay()]
-            const remaining = s.maxOrders - s.currentOrders
-            return `${day}/${month} (${weekday}) - ${remaining} vaga${remaining > 1 ? 's' : ''}`
+            return `${day}/${month} (${weekday})`
           })
 
           return JSON.stringify({
