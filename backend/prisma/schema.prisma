@@ -277,6 +277,7 @@ model Product {
   description String?  @db.Text
   price       Decimal  @db.Decimal(10, 2)
   minOrder    Int      @default(1) @map("min_order")
+  maxOrder    Int      @default(500) @map("max_order")
   imageUrl                String?  @map("image_url") @db.Text
   allowInspirationImages  Boolean  @default(false) @map("allow_inspiration_images")
   inspirationInstruction  String?  @map("inspiration_instruction") @db.Text

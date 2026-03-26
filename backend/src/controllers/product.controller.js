@@ -23,12 +23,13 @@ export class ProductController {
   }
 
   async create(request, reply) {
-    const { categoryId, name, description, price, imageUrl, minOrder, allowInspirationImages, inspirationInstruction, maxInspirationImages, recipeId } = request.body
+    const { categoryId, name, description, price, imageUrl, minOrder, maxOrder, allowInspirationImages, inspirationInstruction, maxInspirationImages, recipeId } = request.body
 
     const product = await prisma.product.create({
       data: {
         userId: request.user.id, categoryId, name, description, price, imageUrl,
         minOrder: minOrder || 1,
+        maxOrder: maxOrder || 500,
         allowInspirationImages: allowInspirationImages || false,
         inspirationInstruction: inspirationInstruction || null,
         maxInspirationImages: maxInspirationImages || 3,
@@ -62,7 +63,7 @@ export class ProductController {
 
   async update(request, reply) {
     const { id } = request.params
-    const { categoryId, name, description, price, imageUrl, active, minOrder, allowInspirationImages, inspirationInstruction, maxInspirationImages, recipeId } = request.body
+    const { categoryId, name, description, price, imageUrl, active, minOrder, maxOrder, allowInspirationImages, inspirationInstruction, maxInspirationImages, recipeId } = request.body
 
     const product = await prisma.product.findFirst({
       where: { id: Number(id), userId: request.user.id },
@@ -73,7 +74,7 @@ export class ProductController {
 
     const updated = await prisma.product.update({
       where: { id: Number(id) },
-      data: { categoryId, name, description, price, imageUrl, active, minOrder, allowInspirationImages, inspirationInstruction, maxInspirationImages, recipeId: recipeId !== undefined ? (recipeId || null) : undefined },
+      data: { categoryId, name, description, price, imageUrl, active, minOrder, maxOrder, allowInspirationImages, inspirationInstruction, maxInspirationImages, recipeId: recipeId !== undefined ? (recipeId || null) : undefined },
     })
 
     return updated

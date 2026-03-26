@@ -41,7 +41,7 @@ export default function AdminProducts() {
   const [recipes, setRecipes] = useState([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
-  const [form, setForm] = useState({ name: '', description: '', price: '', categoryId: '', image: null, minOrder: 1, allowInspirationImages: false, inspirationInstruction: '', maxInspirationImages: 3, recipeId: '' })
+  const [form, setForm] = useState({ name: '', description: '', price: '', categoryId: '', image: null, minOrder: 1, maxOrder: 500, allowInspirationImages: false, inspirationInstruction: '', maxInspirationImages: 3, recipeId: '' })
   const [editingId, setEditingId] = useState(null)
   const [formTab, setFormTab] = useState('descricao')
   const [saving, setSaving] = useState(false)
@@ -68,7 +68,7 @@ export default function AdminProducts() {
 
   function openNew() {
     setEditingId(null)
-    setForm({ name: '', description: '', price: '', categoryId: '', image: null, minOrder: 1, allowInspirationImages: false, inspirationInstruction: '', maxInspirationImages: 3, recipeId: '' })
+    setForm({ name: '', description: '', price: '', categoryId: '', image: null, minOrder: 1, maxOrder: 500, allowInspirationImages: false, inspirationInstruction: '', maxInspirationImages: 3, recipeId: '' })
     setFormTab('descricao')
     setShowModal(true)
   }
@@ -81,6 +81,7 @@ export default function AdminProducts() {
       categoryId: product.categoryId,
       image: product.imageUrl || null,
       minOrder: product.minOrder || 1,
+      maxOrder: product.maxOrder || 500,
       allowInspirationImages: product.allowInspirationImages || false,
       inspirationInstruction: product.inspirationInstruction || '',
       maxInspirationImages: product.maxInspirationImages || 3,
@@ -92,7 +93,7 @@ export default function AdminProducts() {
 
   function closeModal() {
     setEditingId(null)
-    setForm({ name: '', description: '', price: '', categoryId: '', image: null, minOrder: 1, allowInspirationImages: false, inspirationInstruction: '', maxInspirationImages: 3, recipeId: '' })
+    setForm({ name: '', description: '', price: '', categoryId: '', image: null, minOrder: 1, maxOrder: 500, allowInspirationImages: false, inspirationInstruction: '', maxInspirationImages: 3, recipeId: '' })
     setFormTab('descricao')
     setShowModal(false)
   }
@@ -128,6 +129,7 @@ export default function AdminProducts() {
         categoryId: Number(form.categoryId),
         imageUrl,
         minOrder: Number(form.minOrder) || 1,
+        maxOrder: Number(form.maxOrder) || 500,
         allowInspirationImages: form.allowInspirationImages,
         inspirationInstruction: form.inspirationInstruction || null,
         maxInspirationImages: Number(form.maxInspirationImages) || 3,
@@ -141,7 +143,7 @@ export default function AdminProducts() {
       } else {
         await api.post('/products', payload)
         toast.success('Produto criado!')
-        setForm({ name: '', description: '', price: '', categoryId: '', image: null, minOrder: 1, allowInspirationImages: false, inspirationInstruction: '', maxInspirationImages: 3, recipeId: '' })
+        setForm({ name: '', description: '', price: '', categoryId: '', image: null, minOrder: 1, maxOrder: 500, allowInspirationImages: false, inspirationInstruction: '', maxInspirationImages: 3, recipeId: '' })
         setFormTab('descricao')
       }
       loadData()
@@ -249,7 +251,11 @@ export default function AdminProducts() {
                 </div>
                 <div>
                   <label className={labelClass}>Pedido mínimo</label>
-                  <input type="number" min="1" max="1000" value={form.minOrder} onChange={(e) => setForm({ ...form, minOrder: Math.min(1000, Math.max(1, Number(e.target.value) || 1)) })} className={inputClass} />
+                  <input type="number" min="1" max="10000" value={form.minOrder} onChange={(e) => setForm({ ...form, minOrder: Math.min(10000, Math.max(1, Number(e.target.value) || 1)) })} className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>Pedido máximo</label>
+                  <input type="number" min="1" max="10000" value={form.maxOrder} onChange={(e) => setForm({ ...form, maxOrder: Math.min(10000, Math.max(1, Number(e.target.value) || 1)) })} className={inputClass} />
                 </div>
               </div>
               <div>
