@@ -32,7 +32,9 @@ export default function ClientDashboard() {
 
   useEffect(() => {
     api.get('/evo-agent/status').then(({ data }) => {
-      if (data.whatsapp?.phone) setAgentPhone(data.whatsapp.phone)
+      if (data.whatsapp?.status === 'CONNECTED' && data.whatsapp?.phone) {
+        setAgentPhone(data.whatsapp.phone)
+      }
     }).catch(() => {})
 
     api.get('/dashboard/chart').then(({ data }) => setChartData(data)).catch(() => {})

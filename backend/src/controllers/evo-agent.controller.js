@@ -20,10 +20,25 @@ export class EvoAgentController {
         try {
           const { data } = await evolutionApi.get(`/instance/connectionState/${instance.instanceName}`)
           whatsappStatus = data?.instance?.state === 'open' ? 'CONNECTED' : 'DISCONNECTED'
+          const updateData = { status: whatsappStatus }
+
+          // Se conectado e sem phone salvo, busca ownerJid da instância
+          if (whatsappStatus === 'CONNECTED' && !instance.phone) {
+            try {
+              const { data: fetchData } = await evolutionApi.get(`/instance/fetchInstances`, { params: { instanceName: instance.instanceName } })
+              const info = Array.isArray(fetchData) ? fetchData[0] : fetchData
+              const ownerJid = info?.instance?.ownerJid || info?.ownerJid
+              if (ownerJid) {
+                updateData.phone = ownerJid.replace(/@.*/, '')
+              }
+            } catch { /* silencioso */ }
+          }
+
           await prisma.instance.update({
             where: { id: instance.id },
-            data: { status: whatsappStatus },
+            data: updateData,
           })
+          if (updateData.phone) instance.phone = updateData.phone
         } catch {
           whatsappStatus = instance.status
         }
