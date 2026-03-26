@@ -663,9 +663,15 @@ export class OpenAiService {
 
           const total = itemsTotal + deliveryFee
 
-          // Reserva condicional - só se configurada nas instruções
-          const hasRes = this._hasReservation(orderInstructions)
-          const resPercent = hasRes ? (this._extractReservationPercent(orderInstructions) || 30) : null
+          // Reserva condicional - prioriza config da conta, fallback instruções
+          const accountRes = await prisma.account.findUnique({
+            where: { userId },
+            select: { useReservation: true, reservationPercent: true },
+          })
+          const hasRes = accountRes?.useReservation || this._hasReservation(orderInstructions)
+          const resPercent = hasRes
+            ? (accountRes?.reservationPercent || this._extractReservationPercent(orderInstructions) || 30)
+            : null
           const reservation = resPercent ? Math.round(itemsTotal * (resPercent / 100) * 100) / 100 : null
 
           // Busca IDs dos produtos pelo nome e valida min/max
@@ -1068,9 +1074,15 @@ export class OpenAiService {
       orderBy: [{ category: 'asc' }, { sortOrder: 'asc' }],
     })
 
-    // Extrai configurações de reserva e taxa de entrega das instruções
-    const hasReservation = this._hasReservation(instructions)
-    const reservationPercent = hasReservation ? (this._extractReservationPercent(instructions) || 30) : null
+    // Busca configuração de reserva da conta (prioridade) + fallback instruções
+    const account = await prisma.account.findUnique({
+      where: { userId },
+      select: { useReservation: true, reservationPercent: true },
+    })
+    const hasReservation = account?.useReservation || this._hasReservation(instructions)
+    const reservationPercent = hasReservation
+      ? (account?.reservationPercent || this._extractReservationPercent(instructions) || 30)
+      : null
 
     // Busca zonas de entrega do banco (prioridade) + fallback instruções
     const dbZones = await prisma.deliveryZone.findMany({
