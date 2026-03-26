@@ -6,6 +6,12 @@ import s3Client, { S3_BUCKET } from '../config/s3.js'
 import { randomUUID } from 'crypto'
 import bcrypt from 'bcryptjs'
 
+// Normaliza telefone: remove não-dígitos e prefixo 55 se necessário
+function normalizePhone(p) {
+  const digits = (p || '').replace(/\D/g, '')
+  return digits.startsWith('55') && digits.length > 11 ? digits.slice(2) : digits
+}
+
 // Cache de conversas em memória (remoteJid -> messages[])
 const conversationCache = new Map()
 const CONVERSATION_TTL = 30 * 60 * 1000 // 30 minutos
@@ -458,14 +464,21 @@ export class OpenAiService {
   async executeToolCall(toolName, args, userId) {
     switch (toolName) {
       case 'buscar_cliente': {
-        const phone = args.phone.replace(/\D/g, '')
-        const customer = await prisma.customer.findFirst({
+        const rawPhone = normalizePhone(args.phone)
+        let customer = await prisma.customer.findFirst({
           where: {
             userId,
-            phone: { contains: phone },
+            phone: { contains: rawPhone },
             active: true,
           },
         })
+        // Fallback: busca todos e compara normalizado
+        if (!customer) {
+          const allCustomers = await prisma.customer.findMany({
+            where: { userId, active: true },
+          })
+          customer = allCustomers.find(c => normalizePhone(c.phone) === rawPhone)
+        }
         if (customer) {
           return JSON.stringify({
             found: true,
@@ -742,12 +755,22 @@ export class OpenAiService {
               include: { items: { include: { product: true } } },
             })
           } else if (args.customerPhone) {
-            const phone = args.customerPhone.replace(/\D/g, '')
+            const phone = normalizePhone(args.customerPhone)
             order = await prisma.order.findFirst({
               where: { userId, customerPhone: { contains: phone } },
               orderBy: { createdAt: 'desc' },
               include: { items: { include: { product: true } } },
             })
+            // Fallback: busca com variações do telefone
+            if (!order) {
+              const allOrders = await prisma.order.findMany({
+                where: { userId },
+                orderBy: { createdAt: 'desc' },
+                include: { items: { include: { product: true } } },
+                take: 100,
+              })
+              order = allOrders.find(o => normalizePhone(o.customerPhone) === phone)
+            }
           }
 
           if (!order) {
@@ -852,9 +875,9 @@ export class OpenAiService {
 
       case 'registrar_pagamento': {
         try {
-          const phone = args.customerPhone.replace(/\D/g, '')
+          const phone = normalizePhone(args.customerPhone)
           // Busca o pedido mais recente PENDING desse cliente
-          const order = await prisma.order.findFirst({
+          let order = await prisma.order.findFirst({
             where: {
               userId,
               customerPhone: { contains: phone },
@@ -863,6 +886,16 @@ export class OpenAiService {
             orderBy: { createdAt: 'desc' },
             include: { items: { include: { product: true } } },
           })
+          // Fallback normalizado
+          if (!order) {
+            const pendingOrders = await prisma.order.findMany({
+              where: { userId, status: 'PENDING' },
+              orderBy: { createdAt: 'desc' },
+              include: { items: { include: { product: true } } },
+              take: 50,
+            })
+            order = pendingOrders.find(o => normalizePhone(o.customerPhone) === phone)
+          }
 
           if (!order) {
             return JSON.stringify({
