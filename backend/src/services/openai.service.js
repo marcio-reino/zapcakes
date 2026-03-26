@@ -215,6 +215,13 @@ export class OpenAiService {
         const price = Number(prod.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
         catalog += `${j + 1}. *${prod.name}* - ${price}`
         if (prod.description) catalog += ` - ${prod.description}`
+        if (prod.minOrder > 1) catalog += ` (mín: ${prod.minOrder})`
+        if (prod.maxOrder && prod.maxOrder < 500) catalog += ` (máx: ${prod.maxOrder})`
+        if (prod.allowInspirationImages) {
+          catalog += ` 📷 [Aceita imagens de inspiração - máx ${prod.maxInspirationImages || 3}`
+          if (prod.inspirationInstruction) catalog += ` - instrução: "${prod.inspirationInstruction}"`
+          catalog += `]`
+        }
         catalog += '\n'
       })
       catalog += '\n'
@@ -1075,7 +1082,9 @@ export class OpenAiService {
     prompt += `1. Quando o cliente perguntar sobre produtos, mostre as CATEGORIAS numeradas (1. Bolos, 2. Doces, etc.)\n`
     prompt += `2. Quando ele escolher a categoria, responda APENAS com o comando [MOSTRAR_PRODUTOS:NomeDaCategoria] - o sistema vai enviar as fotos dos produtos automaticamente\n`
     prompt += `3. Após as imagens serem enviadas, pergunte qual produto deseja e a quantidade\n`
-    prompt += `4. Quando o cliente escolher um produto e quantidade, CONFIRME o item adicionado (ex: "Adicionei 2x Bolo de Chocolate - R$ 120,00") e pergunte se deseja mais algum produto\n`
+    prompt += `4. Quando o cliente escolher um produto e quantidade, CONFIRME o item adicionado (ex: "Adicionei 2x Bolo de Chocolate - R$ 120,00")\n`
+    prompt += `   - Se o produto tiver a marcação "📷 Aceita imagens de inspiração" no catálogo, pergunte ao cliente: "Você gostaria de enviar imagens de inspiração/referência para esse produto? (fotos do tema, decoração, etc)". Se o cliente quiser enviar, peça as imagens (respeitando o máximo indicado no catálogo). Se não quiser, siga normalmente.\n`
+    prompt += `   - Depois pergunte se deseja mais algum produto\n`
     prompt += `5. O cliente pode adicionar mais produtos ao pedido. Mantenha a lista mental de TODOS os itens pedidos com nome, quantidade e preço unitário\n`
     prompt += `6. Quando o cliente quiser finalizar o pedido, ANTES de confirmar, siga este fluxo obrigatório:\n\n`
 
@@ -1132,7 +1141,7 @@ export class OpenAiService {
     prompt += `### DATA PREVISTA PARA ENTREGA\n\n`
     prompt += `h) Pergunte ao cliente: "Para qual data você gostaria que o pedido fosse entregue/retirado?"\n`
     prompt += `   - O cliente pode responder com data e horário (ex: "Sábado dia 22 às 14h", "25/03 às 10h", "próxima sexta")\n`
-    prompt += `   - Após o cliente informar a data desejada, use a função "consultar_agenda" para verificar se há disponibilidade naquela data\n`
+    prompt += `   - Após o cliente informar a data desejada, você DEVE OBRIGATORIAMENTE chamar a função "consultar_agenda" para verificar se há disponibilidade. NÃO pule esta etapa.\n`
     prompt += `   - Se a agenda NÃO estiver configurada (agendaConfigured=false): aceite qualquer data que o cliente informar\n`
     prompt += `   - Se a data informada pelo cliente estiver DISPONÍVEL na agenda: confirme dizendo "Temos disponibilidade para esse dia!" e pergunte o HORÁRIO de preferência (ex: "Qual horário você prefere?")\n`
     prompt += `   - Se a data informada pelo cliente estiver LOTADA ou NÃO estiver na agenda: informe que aquela data não está disponível e mostre as datas disponíveis como alternativas\n`

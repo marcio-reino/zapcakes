@@ -9,6 +9,7 @@ evolution api key
 
 marcio-reino@hotmail.com
 marcioreino@gmail.com
+123456
 
 Email: superadmin@zapcakes.com
 Senha: Super@2026Wp9635sDf74

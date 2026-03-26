@@ -191,16 +191,17 @@ export class StoreController {
       return reply.status(400).send({ error: 'Senha deve ter no mínimo 4 caracteres' })
     }
 
-    const exists = await prisma.customer.findFirst({
-      where: { userId: account.userId, phone },
-    })
+    const phoneDigitsCheck = phone.replace(/\D/g, '')
+    const allCustomers = await prisma.customer.findMany({ where: { userId: account.userId } })
+    const exists = allCustomers.find(c => normalizePhone(c.phone) === normalizePhone(phoneDigitsCheck))
     if (exists) {
       return reply.status(409).send({ error: 'Já existe uma conta com este celular' })
     }
 
     const hashed = await bcrypt.hash(password, 10)
+    const phoneDigits = phone.replace(/\D/g, '')
     const customer = await prisma.customer.create({
-      data: { userId: account.userId, name, phone, password: hashed },
+      data: { userId: account.userId, name, phone: phoneDigits, password: hashed },
     })
 
     const token = request.server.jwt.sign(

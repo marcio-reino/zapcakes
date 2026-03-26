@@ -29,7 +29,7 @@ export class CustomerController {
 
     const data = {
       userId: request.user.id,
-      name, phone, email, notes,
+      name, phone: phone ? phone.replace(/\D/g, '') : phone, email, notes,
       street, number, complement, neighborhood, city, state, zipCode, reference,
     }
 
@@ -51,7 +51,7 @@ export class CustomerController {
 
     const { name, phone, email, password, notes, street, number, complement, neighborhood, city, state, zipCode, reference, active } = request.body
 
-    const data = { name, phone, email, notes, street, number, complement, neighborhood, city, state, zipCode, reference, active }
+    const data = { name, phone: phone ? phone.replace(/\D/g, '') : phone, email, notes, street, number, complement, neighborhood, city, state, zipCode, reference, active }
 
     if (password) {
       data.password = await bcrypt.hash(password, 10)
