@@ -621,6 +621,7 @@ export class OpenAiService {
           // Verifica disponibilidade na agenda antes de criar o pedido
           if (args.estimatedDeliveryDate) {
             const parsedDate = this._parseDeliveryDate(args.estimatedDeliveryDate)
+            console.log('[criar_pedido] estimatedDeliveryDate:', args.estimatedDeliveryDate, '-> parsedDate:', parsedDate?.toISOString())
             if (parsedDate) {
               const hasAnySlot = await prisma.agendaSlot.count({ where: { userId } })
               if (hasAnySlot > 0) {
@@ -1313,6 +1314,27 @@ export class OpenAiService {
       if (isoMatch) {
         const [, year, month, day] = isoMatch
         return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)))
+      }
+      // Tenta formato dd/mm (sem ano - assume ano atual)
+      const shortMatch = dateStr.match(/(\d{1,2})[\/\-](\d{1,2})/)
+      if (shortMatch) {
+        const [, day, month] = shortMatch
+        const year = new Date().getFullYear()
+        return new Date(Date.UTC(year, Number(month) - 1, Number(day)))
+      }
+      // Tenta extrair apenas o dia (ex: "dia 28", "Sábado dia 28")
+      const dayMatch = dateStr.match(/dia\s+(\d{1,2})/i)
+      if (dayMatch) {
+        const day = Number(dayMatch[1])
+        const now = new Date()
+        let month = now.getUTCMonth()
+        let year = now.getUTCFullYear()
+        // Se o dia já passou neste mês, assume próximo mês
+        if (day < now.getUTCDate()) {
+          month += 1
+          if (month > 11) { month = 0; year += 1 }
+        }
+        return new Date(Date.UTC(year, month, day))
       }
       return null
     } catch {
