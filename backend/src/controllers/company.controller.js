@@ -1,6 +1,15 @@
 import prisma from '../config/database.js'
 
 export class CompanyController {
+  // GET /api/company/system-phone — retorna telefone do WhatsApp do sistema
+  async getSystemPhone(request, reply) {
+    const instance = await prisma.instance.findFirst({
+      where: { instanceName: 'ZapCakes-System' },
+      select: { phone: true, profileName: true },
+    })
+    return { phone: instance?.phone || null, profileName: instance?.profileName || null }
+  }
+
   // GET /api/company — retorna dados da empresa do usuário logado
   async get(request, reply) {
     const userId = request.user.id

@@ -58,16 +58,29 @@ export default function Company() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [showWhatsappModal, setShowWhatsappModal] = useState(false)
+  const [showSystemWaModal, setShowSystemWaModal] = useState(false)
+  const [systemWaPhone, setSystemWaPhone] = useState(null)
   const [waInstance, setWaInstance] = useState(null)
   const qrCanvasRef = useRef(null)
 
   useEffect(() => { loadCompany() }, [])
 
   useEffect(() => {
-    // Carrega dados da instância WhatsApp
+    // Carrega dados da instância WhatsApp do cliente
     api.get('/evo-agent/status').then(({ data }) => {
       if (data?.whatsapp?.phone) {
         setWaInstance(data.whatsapp)
+      }
+    }).catch(() => {})
+
+    // Carrega telefone do sistema ZapCakes e mostra modal se nunca viu
+    api.get('/company/system-phone').then(({ data }) => {
+      if (data?.phone) {
+        setSystemWaPhone(data.phone)
+        const dismissed = localStorage.getItem('zapcakes_system_wa_dismissed')
+        if (!dismissed) {
+          setShowSystemWaModal(true)
+        }
       }
     }).catch(() => {})
   }, [])
@@ -169,6 +182,27 @@ export default function Company() {
     if (parts.length < 2) return null
     const q = encodeURIComponent(parts.join(', '))
     return `https://www.google.com/maps?q=${q}&output=embed`
+  }
+
+  function dismissSystemWaModal() {
+    localStorage.setItem('zapcakes_system_wa_dismissed', '1')
+    setShowSystemWaModal(false)
+  }
+
+  function getSystemWaLink() {
+    if (!systemWaPhone) return ''
+    const clean = systemWaPhone.replace(/\D/g, '').replace(/@.*/, '')
+    return `https://wa.me/${clean}`
+  }
+
+  function downloadSystemQR() {
+    const canvas = document.querySelector('#system-wa-qr canvas')
+    if (!canvas) return
+    const url = canvas.toDataURL('image/png')
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'zapcakes-whatsapp.png'
+    a.click()
   }
 
   function formatPhone(phone) {
@@ -492,6 +526,78 @@ export default function Company() {
           )}
         </div>
       </div>
+
+      {/* Modal - Adicionar ZapCakes no WhatsApp */}
+      <Modal isOpen={showSystemWaModal} onClose={dismissSystemWaModal} title="Adicione o ZapCakes no WhatsApp" maxWidth="max-w-md">
+        <div className="text-center space-y-5">
+          <div className="bg-green-50 dark:bg-green-900/20 rounded-xl p-4">
+            <FaWhatsapp className="w-12 h-12 text-green-500 mx-auto mb-3" />
+            <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-2">Importante!</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              Para receber <strong>notificações do sistema</strong> como avisos de pedidos, alertas e novidades,
+              adicione o número do ZapCakes na sua agenda do WhatsApp.
+            </p>
+          </div>
+
+          {systemWaPhone && (
+            <div className="space-y-4">
+              <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-3">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Número do ZapCakes</p>
+                <p className="text-xl font-bold text-gray-800 dark:text-white">{formatPhone(systemWaPhone)}</p>
+              </div>
+
+              <div id="system-wa-qr" className="flex justify-center p-4 bg-white rounded-xl border border-gray-100 dark:border-gray-600">
+                <QRCodeCanvas
+                  value={getSystemWaLink()}
+                  size={200}
+                  level="H"
+                  imageSettings={{
+                    src: '/logo192.png',
+                    height: 36,
+                    width: 36,
+                    excavate: true,
+                  }}
+                />
+              </div>
+
+              <div className="text-left space-y-2">
+                <div className="flex items-start gap-3 text-sm text-gray-600 dark:text-gray-400">
+                  <FiSmartphone className="w-5 h-5 text-green-500 shrink-0 mt-0.5" />
+                  <span>Escaneie o QR Code acima com a camera do celular para abrir o WhatsApp</span>
+                </div>
+                <div className="flex items-start gap-3 text-sm text-gray-600 dark:text-gray-400">
+                  <FaWhatsapp className="w-5 h-5 text-green-500 shrink-0 mt-0.5" />
+                  <span>Salve o contato <strong>ZapCakes</strong> na sua agenda para receber as notificações</span>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <a
+                  href={getSystemWaLink()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors font-medium"
+                >
+                  <FaWhatsapp size={18} /> Abrir WhatsApp
+                </a>
+                <button
+                  onClick={downloadSystemQR}
+                  className="flex items-center justify-center gap-2 px-4 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                >
+                  <FiDownload size={18} />
+                </button>
+              </div>
+
+              <button
+                onClick={dismissSystemWaModal}
+                className="w-full text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 py-2"
+              >
+                Já adicionei, não mostrar novamente
+              </button>
+            </div>
+          )}
+        </div>
+      </Modal>
 
       {/* Modal QR Code WhatsApp */}
       <Modal isOpen={showWhatsappModal} onClose={() => setShowWhatsappModal(false)} title="WhatsApp da sua Loja" maxWidth="max-w-md">

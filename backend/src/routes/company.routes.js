@@ -5,6 +5,7 @@ export async function companyRoutes(app) {
 
   app.addHook('onRequest', app.authenticate)
 
+  app.get('/system-phone', controller.getSystemPhone)
   app.get('/', controller.get)
   app.put('/', controller.update)
   app.get('/store', controller.getStoreSettings)
