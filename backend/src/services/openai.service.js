@@ -317,6 +317,8 @@ export class OpenAiService {
     for (const product of category.products) {
       const price = Number(product.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
       let caption = `*${product.name}*\n${price}`
+      if (product.minOrder > 1) caption += `\n📦 Pedido mínimo: ${product.minOrder} unidades`
+      if (product.maxOrder && product.maxOrder < 500) caption += `\n📦 Pedido máximo: ${product.maxOrder} unidades`
       if (product.description) caption += `\n\n${product.description}`
 
       await this.sendTyping(instanceName, remoteJid)
@@ -1035,6 +1037,39 @@ export class OpenAiService {
             },
           })
 
+          // Notifica o lojista via WhatsApp (mesmo padrão do site)
+          try {
+            const owner = await prisma.user.findUnique({
+              where: { id: userId },
+              select: { phone: true, name: true },
+            })
+            if (owner?.phone && this._currentInstanceName) {
+              const ownerPhone = owner.phone.replace(/\D/g, '')
+              const whatsappNumber = ownerPhone.startsWith('55') ? ownerPhone : `55${ownerPhone}`
+              const orderCode = String(order.orderNumber).padStart(5, '0')
+              const depositValue = proofAmount !== null ? proofAmount : (order.reservation ? Number(order.reservation) : Number(order.total))
+              const divergenceWarning = valueDivergent ? '\n*Atenção:* Valor do comprovante divergente do esperado!' : ''
+              const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173'
+              const orderLink = `${frontendUrl}/client/orders/${orderCode}`
+
+              const notifyMsg = `*Novo comprovante de reserva recebido!*\n\n` +
+                `*Pedido #${orderCode}*\n` +
+                `*Cliente:* ${order.customerName || 'N/A'}\n` +
+                `*Celular:* ${order.customerPhone || 'N/A'}\n` +
+                `*Valor da reserva:* R$ ${depositValue.toFixed(2).replace('.', ',')}\n` +
+                `*Total do pedido:* R$ ${Number(order.total).toFixed(2).replace('.', ',')}` +
+                `${divergenceWarning}\n\n` +
+                `Acesse o pedido: ${orderLink}`
+
+              await evolutionApi.post(`/message/sendText/${this._currentInstanceName}`, {
+                number: whatsappNumber,
+                text: notifyMsg,
+              })
+            }
+          } catch (notifyErr) {
+            console.error('[Comprovante] Erro ao notificar lojista via WhatsApp:', notifyErr.message)
+          }
+
           const itemsList = order.items.map(i =>
             `${i.quantity}x ${i.product.name} - R$ ${(i.quantity * Number(i.price)).toFixed(2)}`
           ).join(', ')
@@ -1584,6 +1619,7 @@ export class OpenAiService {
   // Processa mensagem e retorna resposta da OpenAI
   async chat(userId, remoteJid, userMessage, instanceName = null) {
     this._currentRemoteJid = remoteJid
+    this._currentInstanceName = instanceName
     const systemPrompt = await this.buildSystemPrompt(userId)
 
     this.addMessage(remoteJid, 'user', userMessage)
@@ -1607,6 +1643,7 @@ export class OpenAiService {
   // Processa mensagem com imagem (multimodal)
   async chatWithImage(userId, remoteJid, userMessage, imageUrl, instanceName = null) {
     this._currentRemoteJid = remoteJid
+    this._currentInstanceName = instanceName
     // Salva a imagem no cache para uso em registrar_pagamento (comprovante)
     lastImageCache.set(remoteJid, imageUrl)
     const systemPrompt = await this.buildSystemPrompt(userId)
