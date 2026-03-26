@@ -241,7 +241,7 @@ export default function AdminProducts() {
                   {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label className={labelClass}>Preço</label>
                   <div className="relative">
