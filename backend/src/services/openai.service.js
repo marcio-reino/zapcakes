@@ -1361,24 +1361,30 @@ export class OpenAiService {
   _parseDeliveryDate(dateStr) {
     if (!dateStr) return null
     try {
+      const currentYear = new Date().getFullYear()
+
       // Tenta formato dd/mm/yyyy
       const brMatch = dateStr.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/)
       if (brMatch) {
-        const [, day, month, year] = brMatch
-        return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)))
+        let [, day, month, year] = brMatch
+        year = Number(year)
+        // Corrige ano passado (ex: IA manda 2023 em vez de 2026)
+        if (year < currentYear) year = currentYear
+        return new Date(Date.UTC(year, Number(month) - 1, Number(day)))
       }
       // Tenta formato yyyy-mm-dd
       const isoMatch = dateStr.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/)
       if (isoMatch) {
-        const [, year, month, day] = isoMatch
-        return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)))
+        let [, year, month, day] = isoMatch
+        year = Number(year)
+        if (year < currentYear) year = currentYear
+        return new Date(Date.UTC(year, Number(month) - 1, Number(day)))
       }
       // Tenta formato dd/mm (sem ano - assume ano atual)
       const shortMatch = dateStr.match(/(\d{1,2})[\/\-](\d{1,2})/)
       if (shortMatch) {
         const [, day, month] = shortMatch
-        const year = new Date().getFullYear()
-        return new Date(Date.UTC(year, Number(month) - 1, Number(day)))
+        return new Date(Date.UTC(currentYear, Number(month) - 1, Number(day)))
       }
       // Tenta extrair apenas o dia (ex: "dia 28", "Sábado dia 28")
       const dayMatch = dateStr.match(/dia\s+(\d{1,2})/i)
