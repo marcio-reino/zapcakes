@@ -230,6 +230,10 @@ export class WebhookController {
             return { received: true }
           }
 
+          // Envia "digitando..." e aguarda 2 segundos antes de enviar
+          await sendTyping(instanceName, remoteJid)
+          await new Promise(resolve => setTimeout(resolve, 2000))
+
           // Envia resposta via Evolution API
           await evolutionApi.post(`/message/sendText/${instanceName}`, {
             number: remoteJid.replace('@s.whatsapp.net', ''),
