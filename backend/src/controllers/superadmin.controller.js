@@ -410,7 +410,7 @@ export class SuperadminController {
         })
       } catch (err) {
         // Ignora se já existe na Evolution
-        const msg = JSON.stringify(err?.response?.data?.message || '')
+        const msg = JSON.stringify(err?.response?.data || '')
         if (!msg.includes('already')) {
           return reply.status(500).send({ error: 'Erro ao criar instância na Evolution API' })
         }
