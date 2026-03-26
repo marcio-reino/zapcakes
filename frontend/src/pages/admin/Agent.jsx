@@ -260,7 +260,11 @@ export default function AdminAgent() {
                         {instruction.imageUrl && (() => {
                           const url = instruction.imageUrl.toLowerCase()
                           if (url.match(/\.pdf(\?|$)/)) {
-                            return <div className="w-12 h-12 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 flex items-center justify-center shrink-0"><FiFile size={20} className="text-red-500" /></div>
+                            return (
+                              <a href={instruction.imageUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title="Abrir PDF" className="w-12 h-12 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 flex items-center justify-center shrink-0 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors cursor-pointer">
+                                <FiFile size={20} className="text-red-500" />
+                              </a>
+                            )
                           }
                           if (url.match(/\.(mp3|mpeg|ogg)(\?|$)/)) {
                             const isPlaying = playingAudio === instruction.id
@@ -290,7 +294,7 @@ export default function AdminAgent() {
                             </h3>
                             {instruction.imageUrl && !instruction.imageUrl.startsWith('blob:') && (() => {
                               const url = instruction.imageUrl.toLowerCase()
-                              if (url.match(/\.pdf(\?|$)/)) return <FiFile size={14} className="text-red-400" />
+                              if (url.match(/\.pdf(\?|$)/)) return <a href={instruction.imageUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title="Abrir PDF"><FiFile size={14} className="text-red-400 hover:text-red-600 transition-colors" /></a>
                               if (url.match(/\.(mp3|mpeg|ogg)(\?|$)/)) return <FiMusic size={14} className="text-blue-400" />
                               return <FiImage size={14} className="text-gray-400" />
                             })()}
