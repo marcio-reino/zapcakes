@@ -668,7 +668,7 @@ export class OpenAiService {
           const resPercent = hasRes ? (this._extractReservationPercent(orderInstructions) || 30) : null
           const reservation = resPercent ? Math.round(itemsTotal * (resPercent / 100) * 100) / 100 : null
 
-          // Busca IDs dos produtos pelo nome
+          // Busca IDs dos produtos pelo nome e valida min/max
           const orderItems = []
           for (const item of args.items) {
             const product = await prisma.product.findFirst({
@@ -679,11 +679,42 @@ export class OpenAiService {
               },
             })
             if (product) {
+              // Valida pedido mínimo
+              if (product.minOrder && item.quantity < product.minOrder) {
+                return JSON.stringify({ success: false, error: `O produto "${product.name}" tem pedido mínimo de ${product.minOrder} unidades. O cliente pediu apenas ${item.quantity}. Peça ao cliente para ajustar a quantidade.` })
+              }
+              // Valida pedido máximo
+              if (product.maxOrder && item.quantity > product.maxOrder) {
+                return JSON.stringify({ success: false, error: `O produto "${product.name}" tem pedido máximo de ${product.maxOrder} unidades. O cliente pediu ${item.quantity}. Peça ao cliente para ajustar a quantidade.` })
+              }
               orderItems.push({
                 productId: product.id,
                 quantity: item.quantity,
                 price: item.price,
               })
+            }
+          }
+
+          // Valida limites por categoria na agenda (se configurada)
+          if (args.estimatedDeliveryDate) {
+            const parsedDateCat = this._parseDeliveryDate(args.estimatedDeliveryDate)
+            if (parsedDateCat) {
+              const slotCat = await prisma.agendaSlot.findUnique({
+                where: { userId_date: { userId, date: parsedDateCat } },
+                include: { categorySlots: { include: { category: true } } },
+              })
+              if (slotCat && slotCat.categorySlots.length > 0) {
+                // Agrupa quantidades por categoria
+                for (const oi of orderItems) {
+                  const prod = await prisma.product.findUnique({ where: { id: oi.productId }, select: { categoryId: true, name: true } })
+                  if (!prod) continue
+                  const catSlot = slotCat.categorySlots.find(cs => cs.categoryId === prod.categoryId)
+                  if (catSlot && (catSlot.currentUnits + oi.quantity) > catSlot.maxUnits) {
+                    const remaining = catSlot.maxUnits - catSlot.currentUnits
+                    return JSON.stringify({ success: false, error: `A capacidade de produção de "${catSlot.category.name}" para ${args.estimatedDeliveryDate} é de ${catSlot.maxUnits} unidades e já temos ${catSlot.currentUnits} reservadas. Restam ${remaining} vagas. O cliente pediu ${oi.quantity}x ${prod.name}. Peça para ajustar a quantidade ou escolher outra data.` })
+                  }
+                }
+              }
             }
           }
 
@@ -721,10 +752,25 @@ export class OpenAiService {
           if (args.estimatedDeliveryDate) {
             const parsedDate = this._parseDeliveryDate(args.estimatedDeliveryDate)
             if (parsedDate) {
-              await prisma.agendaSlot.updateMany({
-                where: { userId, date: parsedDate, active: true },
-                data: { currentOrders: { increment: 1 } },
+              const slotForUpdate = await prisma.agendaSlot.findUnique({
+                where: { userId_date: { userId, date: parsedDate } },
               })
+              if (slotForUpdate) {
+                await prisma.agendaSlot.update({
+                  where: { id: slotForUpdate.id },
+                  data: { currentOrders: { increment: 1 } },
+                })
+                // Incrementa currentUnits por categoria
+                for (const oi of orderItems) {
+                  const prod = await prisma.product.findUnique({ where: { id: oi.productId }, select: { categoryId: true } })
+                  if (prod) {
+                    await prisma.agendaCategorySlot.updateMany({
+                      where: { agendaSlotId: slotForUpdate.id, categoryId: prod.categoryId },
+                      data: { currentUnits: { increment: oi.quantity } },
+                    })
+                  }
+                }
+              }
             }
           }
 
@@ -849,6 +895,7 @@ export class OpenAiService {
               active: true,
               date: { gte: today, lte: endDate },
             },
+            include: { categorySlots: { include: { category: true } } },
             orderBy: { date: 'asc' },
           })
 
@@ -868,7 +915,15 @@ export class OpenAiService {
             const day = String(d.getUTCDate()).padStart(2, '0')
             const month = String(d.getUTCMonth() + 1).padStart(2, '0')
             const weekday = WEEKDAYS[d.getUTCDay()]
-            return `${day}/${month} (${weekday})`
+            let info = `${day}/${month} (${weekday})`
+            if (s.categorySlots.length > 0) {
+              const cats = s.categorySlots.map(cs => {
+                const remaining = cs.maxUnits - cs.currentUnits
+                return `${cs.category.name}: ${remaining} disponíveis`
+              }).join(', ')
+              info += ` [${cats}]`
+            }
+            return info
           })
 
           return JSON.stringify({
