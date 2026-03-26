@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import api from '../../services/api.js'
 import toast from 'react-hot-toast'
-import { FiPlus, FiEdit2, FiTrash2, FiSearch, FiToggleLeft, FiToggleRight, FiEye } from 'react-icons/fi'
+import { FiPlus, FiEdit2, FiTrash2, FiSearch, FiToggleLeft, FiToggleRight, FiEye, FiRefreshCw } from 'react-icons/fi'
 import Modal from '../../components/Modal.jsx'
 import ConfirmModal from '../../components/ConfirmModal.jsx'
 
@@ -166,9 +166,14 @@ export default function Customers() {
     <div>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-800 dark:text-white">Clientes</h1>
-        <button onClick={openNew} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-lg transition-colors">
-          <FiPlus size={18} /> Novo Cliente
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => { setLoading(true); loadCustomers() }} className="flex items-center gap-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 px-4 py-2.5 rounded-lg transition-colors">
+            <FiRefreshCw size={18} />
+          </button>
+          <button onClick={openNew} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-lg transition-colors">
+            <FiPlus size={18} /> Novo Cliente
+          </button>
+        </div>
       </div>
 
       <div className="relative mb-6">

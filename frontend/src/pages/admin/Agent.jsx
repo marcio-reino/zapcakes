@@ -28,6 +28,7 @@ export default function AdminAgent() {
   const [qrCode, setQrCode] = useState(null)
   const [whatsappStatus, setWhatsappStatus] = useState(null)
   const [connecting, setConnecting] = useState(false)
+  const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false)
   const [playingAudio, setPlayingAudio] = useState(null) // instruction id
   const audioRef = useRef(null)
 
@@ -196,7 +197,7 @@ export default function AdminAgent() {
           <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-3">
             {whatsappStatus === 'CONNECTED' ? (
               <button
-                onClick={handleDisconnectWhatsApp}
+                onClick={() => setShowDisconnectConfirm(true)}
                 className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 md:py-2.5 rounded-lg transition-colors text-lg md:text-sm"
               >
                 <FiWifi size={18} />
@@ -437,6 +438,16 @@ export default function AdminAgent() {
         title="Remover instrução"
         message="Tem certeza que deseja remover esta instrução do agente?"
         confirmText="Remover"
+      />
+
+      {/* Modal confirmação desconectar WhatsApp */}
+      <ConfirmModal
+        isOpen={showDisconnectConfirm}
+        onClose={() => setShowDisconnectConfirm(false)}
+        onConfirm={() => { setShowDisconnectConfirm(false); handleDisconnectWhatsApp() }}
+        title="Desconectar WhatsApp"
+        message="Deseja realmente desconectar o WhatsApp do agente de atendimento?"
+        confirmText="Desconectar"
       />
 
       {/* Modal QR Code WhatsApp */}
