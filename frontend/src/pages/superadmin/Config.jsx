@@ -87,7 +87,7 @@ export default function Config() {
     setWaLoading(true)
     setWaQrCode(null)
     try {
-      const { data } = await api.post('/superadmin/whatsapp/connect')
+      const { data } = await api.post('/superadmin/whatsapp/connect', {})
       const qr = data.qrcode
       if (qr) {
         const src = qr.startsWith('data:') ? qr : `data:image/png;base64,${qr}`
@@ -96,8 +96,8 @@ export default function Config() {
         setQrModalOpen(true)
         startPolling()
       }
-    } catch {
-      // erro
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Erro ao conectar WhatsApp')
     } finally {
       setWaLoading(false)
     }
@@ -106,7 +106,7 @@ export default function Config() {
   async function handleDisconnect() {
     setWaLoading(true)
     try {
-      await api.post('/superadmin/whatsapp/disconnect')
+      await api.post('/superadmin/whatsapp/disconnect', {})
       setWaStatus('DISCONNECTED')
       setWaPhone('')
       setWaProfileName('')
