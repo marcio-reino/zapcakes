@@ -20,6 +20,7 @@ export default function Config() {
   const [pixName, setPixName] = useState('')
   const [paymentInstructions, setPaymentInstructions] = useState('')
   const [companyPhone, setCompanyPhone] = useState('')
+  const [notifyPhone, setNotifyPhone] = useState('')
   const [companyEmail, setCompanyEmail] = useState('')
   const [siteConfeitarias, setSiteConfeitarias] = useState('')
   const [sitePedidos, setSitePedidos] = useState('')
@@ -45,6 +46,7 @@ export default function Config() {
         setPixName(data.pix_name || '')
         setPaymentInstructions(data.payment_instructions || '')
         setCompanyPhone(data.company_phone || '')
+        setNotifyPhone(data.notify_phone || '')
         setCompanyEmail(data.company_email || '')
         setSiteConfeitarias(data.site_confeitarias || '')
         setSitePedidos(data.site_pedidos || '')
@@ -129,7 +131,7 @@ export default function Config() {
     setSaving(true)
     setSaved(false)
     try {
-      await api.put('/superadmin/config', { pixKey, pixName, paymentInstructions, companyPhone, companyEmail, siteConfeitarias, sitePedidos, siteSatisfacao })
+      await api.put('/superadmin/config', { pixKey, pixName, paymentInstructions, companyPhone, notifyPhone, companyEmail, siteConfeitarias, sitePedidos, siteSatisfacao })
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
     } catch {
@@ -182,7 +184,7 @@ export default function Config() {
             <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Contato da Empresa</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Celular</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Celular Agente ZapCakes</label>
                 <input
                   type="text"
                   value={companyPhone}
@@ -193,6 +195,21 @@ export default function Config() {
                   placeholder="(22) 99999-9999"
                   className={inputClass}
                 />
+                <span className="text-xs text-gray-400 mt-1 block">Número utilizado pelo agente IA para atendimento</span>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Celular Recebimento de Avisos</label>
+                <input
+                  type="text"
+                  value={notifyPhone}
+                  onChange={e => {
+                    const n = e.target.value.replace(/\D/g, '').slice(0, 11)
+                    setNotifyPhone(n.replace(/(\d{2})(\d{5})(\d{0,4})/, '($1) $2-$3'))
+                  }}
+                  placeholder="(22) 99999-9999"
+                  className={inputClass}
+                />
+                <span className="text-xs text-gray-400 mt-1 block">Recebe notificações de novos cadastros e alertas do sistema</span>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">E-mail</label>

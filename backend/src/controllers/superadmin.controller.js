@@ -921,7 +921,7 @@ export class SuperadminController {
   }
 
   async updateConfig(request, reply) {
-    const { pixKey, pixName, paymentInstructions, companyPhone, companyEmail, siteConfeitarias, sitePedidos, siteSatisfacao } = request.body
+    const { pixKey, pixName, paymentInstructions, companyPhone, notifyPhone, companyEmail, siteConfeitarias, sitePedidos, siteSatisfacao } = request.body
 
     const upsert = async (key, value) => {
       if (value === undefined) return
@@ -936,6 +936,7 @@ export class SuperadminController {
     await upsert('pix_name', pixName)
     await upsert('payment_instructions', paymentInstructions)
     await upsert('company_phone', companyPhone)
+    await upsert('notify_phone', notifyPhone)
     await upsert('company_email', companyEmail)
     await upsert('site_confeitarias', siteConfeitarias)
     await upsert('site_pedidos', sitePedidos)

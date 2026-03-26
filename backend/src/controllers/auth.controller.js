@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path'
 import prisma from '../config/database.js'
 import { AccountService } from '../services/account.service.js'
 import { sendMail } from '../services/mail.service.js'
+import evolutionApi from '../config/evolution.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const resetTemplate = readFileSync(join(__dirname, '../templates/reset-password.html'), 'utf-8')
@@ -19,6 +20,28 @@ const activationCodes = new Map()
 
 function generateCode() {
   return String(Math.floor(100000 + Math.random() * 900000))
+}
+
+async function notifyNewUser(name, email) {
+  try {
+    const config = await prisma.systemConfig.findUnique({ where: { key: 'notify_phone' } })
+    if (!config?.value) return
+
+    const phone = config.value.replace(/\D/g, '')
+    if (!phone) return
+
+    const instance = await prisma.instance.findFirst({ where: { instanceName: 'ZapCakes-System', status: 'CONNECTED' } })
+    if (!instance) return
+
+    const number = phone.startsWith('55') ? phone : `55${phone}`
+
+    await evolutionApi.post(`/message/sendText/${instance.instanceName}`, {
+      number,
+      text: `📋 *Novo cadastro no ZapCakes*\n\n👤 *Nome:* ${name}\n📧 *E-mail:* ${email}\n📅 *Data:* ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`,
+    })
+  } catch (err) {
+    console.error('Erro ao notificar novo cadastro:', err.message)
+  }
 }
 
 function sendActivationEmail(name, email, code) {
@@ -97,6 +120,9 @@ export class AuthController {
     sendActivationEmail(name, email, code).catch(err => {
       console.error('Erro ao enviar e-mail de ativação:', err.message)
     })
+
+    // Notifica admin via WhatsApp
+    notifyNewUser(name, email)
 
     return reply.status(201).send({ pendingActivation: true, email })
   }
