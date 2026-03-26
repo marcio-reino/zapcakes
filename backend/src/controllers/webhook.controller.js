@@ -12,6 +12,7 @@ async function sendTyping(instanceName, remoteJid) {
     await evolutionApi.post(`/chat/sendPresence/${instanceName}`, {
       number: remoteJid.replace('@s.whatsapp.net', ''),
       presence: 'composing',
+      delay: 2000,
     })
   } catch {
     // Ignora erros de presença
