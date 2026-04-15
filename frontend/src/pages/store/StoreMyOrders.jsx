@@ -19,7 +19,7 @@ const STATUS_MAP = {
   CANCELLED: { label: 'Cancelado', color: 'bg-red-100 text-red-700' },
 }
 
-function PaymentProofSection({ order, slug, onUpdate }) {
+function PaymentProofSection({ order, slug, store, onUpdate }) {
   const fileRef = useRef(null)
   const [uploading, setUploading] = useState(false)
   const [preview, setPreview] = useState(null)
@@ -139,6 +139,23 @@ function PaymentProofSection({ order, slug, onUpdate }) {
         </div>
       </div>
 
+      {store?.pixKey && (
+        <div className="mb-3 px-4 py-3 bg-white rounded-xl border-2 border-indigo-200 text-center">
+          <p className="text-xs text-indigo-500 uppercase tracking-wider font-semibold mb-1">Chave PIX</p>
+          <p className="text-lg font-bold font-mono text-indigo-900 break-all leading-relaxed mb-2">{store.pixKey}</p>
+          <button
+            type="button"
+            onClick={() => {
+              navigator.clipboard.writeText(store.pixKey)
+              toast.success('Chave PIX copiada!')
+            }}
+            className="px-4 py-1.5 text-xs font-semibold bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors"
+          >
+            Copiar chave PIX
+          </button>
+        </div>
+      )}
+
       {preview ? (
         <div className="flex items-center gap-3 mb-2">
           <img src={preview} alt="Preview" className="w-14 h-14 rounded-lg object-cover border-2 border-indigo-200" />
@@ -159,7 +176,7 @@ function PaymentProofSection({ order, slug, onUpdate }) {
   )
 }
 
-function OrderCard({ order, slug, onProofUpdate }) {
+function OrderCard({ order, slug, store, onProofUpdate }) {
   const [expanded, setExpanded] = useState(false)
   const status = STATUS_MAP[order.status] || STATUS_MAP.PENDING
 
@@ -238,7 +255,7 @@ function OrderCard({ order, slug, onProofUpdate }) {
 
           {/* Comprovante de pagamento PIX */}
           {showPaymentProof && (
-            <PaymentProofSection order={order} slug={slug} onUpdate={onProofUpdate} />
+            <PaymentProofSection order={order} slug={slug} store={store} onUpdate={onProofUpdate} />
           )}
         </div>
       )}
@@ -247,7 +264,7 @@ function OrderCard({ order, slug, onProofUpdate }) {
 }
 
 export default function StoreMyOrders() {
-  const { slug } = useOutletContext()
+  const { slug, store } = useOutletContext()
   const { customer } = useStoreAuth()
   const navigate = useNavigate()
   const [orders, setOrders] = useState([])
@@ -303,7 +320,7 @@ export default function StoreMyOrders() {
         </div>
       ) : (
         <div className="space-y-3">
-          {orders.map(o => <OrderCard key={o.id} order={o} slug={slug} onProofUpdate={handleProofUpdate} />)}
+          {orders.map(o => <OrderCard key={o.id} order={o} slug={slug} store={store} onProofUpdate={handleProofUpdate} />)}
         </div>
       )}
     </div>
