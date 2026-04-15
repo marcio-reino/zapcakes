@@ -77,20 +77,49 @@ export default function StoreOrderConfirmation() {
         <p className="text-gray-500 text-sm mb-1">Seu pedido foi enviado com sucesso.</p>
         <p className="text-gray-400 text-xs mb-6">Pedido #{order ? String(order.orderNumber).padStart(5, '0') : '...'}</p>
 
-        {order && (
-          <div className="text-left bg-gray-50 rounded-xl p-4 mb-6 space-y-2">
-            {order.items?.map(item => (
-              <div key={item.id} className="flex justify-between text-sm">
-                <span className="text-gray-600">{item.quantity}x {item.product?.name}</span>
-                <span className="text-gray-800 font-medium">{fmtBRL(Number(item.price) * item.quantity)}</span>
+        {order && (() => {
+          const subtotal = order.items?.reduce((s, i) => s + Number(i.price) * i.quantity, 0) || 0
+          const deliveryFee = Number(order.deliveryFee || 0)
+          const total = Number(order.total)
+          const discount = subtotal + deliveryFee - total
+          return (
+            <div className="text-left bg-gray-50 rounded-xl p-4 mb-6 space-y-2">
+              {order.items?.map(item => (
+                <div key={item.id} className="flex justify-between text-sm">
+                  <span className="text-gray-600">{item.quantity}x {item.product?.name}</span>
+                  <span className="text-gray-800 font-medium">{fmtBRL(Number(item.price) * item.quantity)}</span>
+                </div>
+              ))}
+              {discount > 0.01 && (
+                <div className="flex justify-between text-sm text-green-600">
+                  <span>Desconto combo</span>
+                  <span className="font-medium">- {fmtBRL(discount)}</span>
+                </div>
+              )}
+              {deliveryFee > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Taxa de entrega</span>
+                  <span className="text-gray-800 font-medium">{fmtBRL(deliveryFee)}</span>
+                </div>
+              )}
+              <div className="border-t pt-2 flex justify-between font-bold text-gray-800">
+                <span>Total</span>
+                <span>{fmtBRL(total)}</span>
               </div>
-            ))}
-            <div className="border-t pt-2 flex justify-between font-bold text-gray-800">
-              <span>Total</span>
-              <span>{fmtBRL(order.total)}</span>
+              {reservationValue && (
+                <div className="mt-2 px-3 py-3 bg-amber-50 border border-amber-200 rounded-lg">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-semibold text-amber-800">Valor de reserva ({store.reservationPercent}%)</span>
+                    <span className="text-lg font-bold text-amber-800">{fmtBRL(reservationValue)}</span>
+                  </div>
+                  <p className="text-xs text-amber-600 mt-1">
+                    Restante a pagar na entrega/retirada: {fmtBRL(total - reservationValue)}
+                  </p>
+                </div>
+              )}
             </div>
-          </div>
-        )}
+          )
+        })()}
 
         {/* Comprovante PIX */}
         {order && !order.paymentProof && !proofSent && (reservationValue || store?.pixKey) && (
