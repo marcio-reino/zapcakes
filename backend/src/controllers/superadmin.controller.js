@@ -88,7 +88,7 @@ export class SuperadminController {
         account: {
           select: {
             id: true, companyName: true, legalName: true, document: true, documentType: true,
-            logoUrl: true, responsible: true, hourlyRate: true,
+            logoUrl: true, responsible: true, hourlyRate: true, slug: true, storeActive: true,
             status: true, trialEndsAt: true, planStartedAt: true, planExpiresAt: true, billingDay: true, notes: true,
             plan: { select: { id: true, title: true, price: true } },
             payments: {

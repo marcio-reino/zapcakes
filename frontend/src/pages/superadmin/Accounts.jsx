@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import api from '../../services/api.js'
 import toast from 'react-hot-toast'
-import { FiSearch, FiEye, FiEdit2, FiToggleLeft, FiToggleRight, FiX, FiWifi, FiWifiOff, FiMoreVertical, FiUser, FiPower, FiMail, FiBell, FiBarChart2, FiPrinter, FiLoader, FiTrendingUp, FiTrendingDown, FiMinus } from 'react-icons/fi'
+import { FiSearch, FiEye, FiEdit2, FiToggleLeft, FiToggleRight, FiX, FiWifi, FiWifiOff, FiMoreVertical, FiUser, FiPower, FiMail, FiBell, FiBarChart2, FiPrinter, FiLoader, FiTrendingUp, FiTrendingDown, FiMinus, FiExternalLink, FiShoppingBag } from 'react-icons/fi'
 import { jsPDF } from 'jspdf'
 import Modal from '../../components/Modal.jsx'
 import ConfirmModal from '../../components/ConfirmModal.jsx'
@@ -728,6 +728,37 @@ export default function SuperadminAccounts() {
             {/* Aba Serviços */}
             {activeTab === 'servicos' && (
               <div className="space-y-4">
+                {/* Link da loja online */}
+                {selected.account?.slug && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Loja Online</h3>
+                    <div className="flex items-center justify-between bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                      <div className="flex items-center gap-3">
+                        <FiShoppingBag size={18} className={selected.account.storeActive ? 'text-green-500' : 'text-gray-400'} />
+                        <div>
+                          <p className="text-sm font-medium text-gray-900 dark:text-white">{selected.account.companyName}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">/loja/{selected.account.slug}</p>
+                          <span className={`inline-block mt-1 px-2 py-0.5 text-xs rounded-full ${
+                            selected.account.storeActive
+                              ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                              : 'bg-gray-100 text-gray-600 dark:bg-gray-600 dark:text-gray-300'
+                          }`}>
+                            {selected.account.storeActive ? 'Ativa' : 'Inativa'}
+                          </span>
+                        </div>
+                      </div>
+                      <a
+                        href={`/loja/${selected.account.slug}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 hover:bg-indigo-200 dark:hover:bg-indigo-900/50 rounded-lg transition-colors text-sm"
+                      >
+                        <FiExternalLink size={14} /> Acessar
+                      </a>
+                    </div>
+                  </div>
+                )}
+
                 <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Instâncias WhatsApp</h3>
                 {selected.instances?.length > 0 ? (
                   <div className="space-y-3">

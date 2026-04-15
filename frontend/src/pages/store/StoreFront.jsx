@@ -171,6 +171,8 @@ function ComboCard({ combo, onOpen }) {
     imageUrl: combo.imageUrl || combo.items[0]?.product?.imageUrl,
     isCombo: true,
     comboId: combo.id,
+    comboItems: combo.items,
+    comboDiscount: Number(combo.discount || 0),
   }
 
   return (

@@ -281,11 +281,16 @@ export default function StoreCart() {
 
     setSending(true)
     try {
-      // Upload inspiration images
+      // Upload inspiration images & separate combos from individual items
       const uploadedItems = []
+      const combos = []
       for (const item of items) {
         const isCombo = typeof item.product.id === 'string' && item.product.id.startsWith('combo_')
-        if (isCombo) continue
+
+        if (isCombo) {
+          combos.push({ comboId: item.product.comboId, quantity: item.quantity })
+          continue
+        }
 
         const attachments = []
         if (item.attachments?.length) {
@@ -325,8 +330,8 @@ export default function StoreCart() {
         })
       }
 
-      if (!uploadedItems.length) {
-        toast.error('Adicione produtos individuais ao carrinho para finalizar')
+      if (!uploadedItems.length && !combos.length) {
+        toast.error('Adicione pelo menos um item ao carrinho')
         setSending(false)
         return
       }
@@ -336,7 +341,8 @@ export default function StoreCart() {
         : null
 
       const { data } = await storeApi.post(`/store/${slug}/orders`, {
-        items: uploadedItems,
+        items: uploadedItems.length ? uploadedItems : undefined,
+        combos: combos.length ? combos : undefined,
         deliveryType,
         deliveryAddress: deliveryType === 'delivery' ? deliveryAddress : null,
         deliveryZoneId: selectedZone ? selectedZone.id : null,

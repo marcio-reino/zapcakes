@@ -312,10 +312,10 @@ export class StoreController {
 
   // POST /api/store/:slug/orders
   async createOrder(request, reply) {
-    const { items, deliveryAddress, deliveryType, notes, estimatedDeliveryDate, deliveryFee, deliveryZoneId } = request.body
+    const { items, combos, deliveryAddress, deliveryType, notes, estimatedDeliveryDate, deliveryFee, deliveryZoneId } = request.body
     const { customerId, userId } = request.customer
 
-    if (!items || !items.length) {
+    if ((!items || !items.length) && (!combos || !combos.length)) {
       return reply.status(400).send({ error: 'Adicione pelo menos um item' })
     }
 
@@ -340,26 +340,75 @@ export class StoreController {
       select: { name: true, phone: true },
     })
 
-    const productIds = items.map(i => i.productId)
-    const products = await prisma.product.findMany({
-      where: { id: { in: productIds }, userId, active: true },
-    })
+    // Processar itens individuais
+    const orderItems = []
+    let total = 0
 
-    if (products.length !== productIds.length) {
-      return reply.status(400).send({ error: 'Um ou mais produtos não encontrados' })
+    if (items?.length) {
+      const productIds = items.map(i => i.productId)
+      const products = await prisma.product.findMany({
+        where: { id: { in: productIds }, userId, active: true },
+      })
+
+      if (products.length !== productIds.length) {
+        return reply.status(400).send({ error: 'Um ou mais produtos não encontrados' })
+      }
+
+      for (const item of items) {
+        const product = products.find(p => p.id === item.productId)
+        orderItems.push({
+          productId: item.productId,
+          quantity: item.quantity,
+          price: product.price,
+          _attachments: item.attachments || [],
+        })
+        total += Number(product.price) * item.quantity
+      }
     }
 
-    const orderItems = items.map(item => {
-      const product = products.find(p => p.id === item.productId)
-      return {
-        productId: item.productId,
-        quantity: item.quantity,
-        price: product.price,
-        _attachments: item.attachments || [],
-      }
-    })
+    // Processar combos — expande cada combo nos seus produtos com desconto aplicado
+    let comboDiscount = 0
+    if (combos?.length) {
+      const comboIds = combos.map(c => c.comboId)
+      const dbCombos = await prisma.combo.findMany({
+        where: { id: { in: comboIds }, userId, active: true },
+        include: {
+          items: {
+            include: { product: true },
+            orderBy: { sortOrder: 'asc' },
+          },
+        },
+      })
 
-    const total = orderItems.reduce((sum, item) => sum + Number(item.price) * item.quantity, 0)
+      if (dbCombos.length !== comboIds.length) {
+        return reply.status(400).send({ error: 'Um ou mais combos não encontrados' })
+      }
+
+      for (const comboEntry of combos) {
+        const combo = dbCombos.find(c => c.id === comboEntry.comboId)
+        const qty = comboEntry.quantity || 1
+
+        for (const ci of combo.items) {
+          const existing = orderItems.find(oi => oi.productId === ci.productId)
+          if (existing) {
+            existing.quantity += ci.quantity * qty
+          } else {
+            orderItems.push({
+              productId: ci.productId,
+              quantity: ci.quantity * qty,
+              price: ci.product.price,
+              _attachments: [],
+            })
+          }
+          total += Number(ci.product.price) * ci.quantity * qty
+        }
+        // Acumula desconto do combo
+        comboDiscount += Number(combo.discount || 0) * qty
+      }
+    }
+
+    // Aplica desconto dos combos ao total
+    total = Math.max(0, total - comboDiscount)
 
     // Calcula valor de reserva se a conta usa reserva
     const account = await prisma.account.findUnique({
