@@ -11,6 +11,7 @@ export default function StoreSite() {
   const [slug, setSlug] = useState('')
   const [storeActive, setStoreActive] = useState(false)
   const [deliveryEnabled, setDeliveryEnabled] = useState(false)
+  const [pixKey, setPixKey] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -32,6 +33,7 @@ export default function StoreSite() {
         setSlug(data.slug || '')
         setStoreActive(data.storeActive || false)
         setDeliveryEnabled(data.deliveryEnabled || false)
+        setPixKey(data.pixKey || '')
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -58,10 +60,11 @@ export default function StoreSite() {
     }
     setSaving(true)
     try {
-      const { data } = await api.put('/company/store', { slug, storeActive, deliveryEnabled })
+      const { data } = await api.put('/company/store', { slug, storeActive, deliveryEnabled, pixKey: pixKey || null })
       setSlug(data.slug)
       setStoreActive(data.storeActive)
       setDeliveryEnabled(data.deliveryEnabled)
+      setPixKey(data.pixKey || '')
       toast.success('Configurações salvas!')
     } catch (err) {
       toast.error(err.response?.data?.error || 'Erro ao salvar')
@@ -229,6 +232,19 @@ export default function StoreSite() {
             )}
           </div>
         )}
+
+        {/* Chave PIX */}
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 space-y-4">
+          <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Chave PIX da Loja</h2>
+          <p className="text-xs text-gray-400">Informe sua chave PIX para que seus clientes possam visualizá-la ao finalizar um pedido no site.</p>
+          <input
+            type="text"
+            value={pixKey}
+            onChange={e => setPixKey(e.target.value)}
+            placeholder="CPF, CNPJ, e-mail, telefone ou chave aleatória"
+            className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-4 py-2.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
+          />
+        </div>
 
         {/* Entrega / Delivery */}
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 space-y-5">

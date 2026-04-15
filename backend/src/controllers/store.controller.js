@@ -33,7 +33,7 @@ export class StoreController {
     const account = await prisma.account.findFirst({
       where: { slug, storeActive: true },
       select: {
-        companyName: true, logoUrl: true, useReservation: true, reservationPercent: true, deliveryEnabled: true,
+        companyName: true, logoUrl: true, useReservation: true, reservationPercent: true, deliveryEnabled: true, pixKey: true,
         user: {
           select: {
             phone: true, city: true, state: true,
@@ -54,6 +54,7 @@ export class StoreController {
       useReservation: account.useReservation || false,
       reservationPercent: account.reservationPercent || null,
       deliveryEnabled: account.deliveryEnabled || false,
+      pixKey: account.pixKey || null,
     }
   }
 

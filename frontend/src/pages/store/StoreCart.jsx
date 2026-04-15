@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useOutletContext, Link } from 'react-router-dom'
-import { FiPlus, FiMinus, FiTrash2, FiArrowLeft, FiCamera, FiX, FiImage, FiCalendar, FiChevronLeft, FiChevronRight, FiSearch, FiMapPin, FiLoader } from 'react-icons/fi'
+import { FiPlus, FiMinus, FiTrash2, FiArrowLeft, FiCamera, FiX, FiImage, FiCalendar, FiChevronLeft, FiChevronRight, FiSearch, FiMapPin, FiLoader, FiCopy } from 'react-icons/fi'
 import { useCart } from '../../hooks/useCart.jsx'
 import { useStoreAuth } from '../../contexts/StoreAuthContext.jsx'
 import storeApi from '../../services/storeApi.js'
@@ -744,7 +744,26 @@ export default function StoreCart() {
             </p>
           </div>
         )}
-        {!(store?.useReservation && store.reservationPercent > 0 && total > 0) && <div className="mb-2" />}
+        {store?.pixKey && (
+          <div className="mb-4 px-3 py-3 bg-green-50 border border-green-200 rounded-lg">
+            <p className="text-sm font-medium text-green-800 mb-1">Chave PIX para pagamento</p>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-green-700 font-mono break-all flex-1">{store.pixKey}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(store.pixKey)
+                  toast.success('Chave PIX copiada!')
+                }}
+                className="p-1.5 text-green-600 hover:text-green-800 transition-colors flex-shrink-0"
+                title="Copiar chave PIX"
+              >
+                <FiCopy size={16} />
+              </button>
+            </div>
+          </div>
+        )}
+        {!(store?.useReservation && store.reservationPercent > 0 && total > 0) && !store?.pixKey && <div className="mb-2" />}
         <button
           onClick={handleOrder}
           disabled={sending}

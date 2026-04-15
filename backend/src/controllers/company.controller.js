@@ -167,7 +167,7 @@ export class CompanyController {
   async getStoreSettings(request, reply) {
     const account = await prisma.account.findUnique({
       where: { userId: request.user.id },
-      select: { slug: true, storeActive: true, deliveryEnabled: true },
+      select: { slug: true, storeActive: true, deliveryEnabled: true, pixKey: true },
     })
     if (!account) return reply.status(404).send({ error: 'Conta não encontrada' })
     return account
@@ -175,7 +175,7 @@ export class CompanyController {
 
   // PUT /api/company/store — atualiza configurações da loja
   async updateStoreSettings(request, reply) {
-    const { slug, storeActive, deliveryEnabled } = request.body
+    const { slug, storeActive, deliveryEnabled, pixKey } = request.body
 
     if (slug !== undefined) {
       const normalized = slug.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 100)
@@ -194,11 +194,12 @@ export class CompanyController {
     if (slug !== undefined) data.slug = slug.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 100)
     if (storeActive !== undefined) data.storeActive = storeActive
     if (deliveryEnabled !== undefined) data.deliveryEnabled = deliveryEnabled
+    if (pixKey !== undefined) data.pixKey = pixKey || null
 
     const account = await prisma.account.update({
       where: { userId: request.user.id },
       data,
-      select: { slug: true, storeActive: true, deliveryEnabled: true },
+      select: { slug: true, storeActive: true, deliveryEnabled: true, pixKey: true },
     })
 
     return account
