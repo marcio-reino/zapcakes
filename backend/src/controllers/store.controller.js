@@ -876,9 +876,11 @@ Seja tolerante — aceite imagens de paletas de cores, decorações, temas de fe
           const depositValue = proofAmount !== null ? proofAmount : (order.reservation ? Number(order.reservation) : Number(order.total))
           const divergenceWarning = valueDivergent ? '\n*Atenção:* Valor do comprovante divergente do esperado!' : ''
 
-          const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173'
+          const frontendUrl = process.env.FRONTEND_URL
           const orderCode = String(order.orderNumber).padStart(5, '0')
-          const orderLink = `${frontendUrl}/client/orders/${orderCode}`
+          const orderLinkLine = frontendUrl
+            ? `\n\nAcesse o pedido: ${frontendUrl.replace(/\/$/, '')}/client/orders/${orderCode}`
+            : ''
 
           const msg = `*Novo comprovante de reserva recebido!*\n\n` +
             `*Pedido #${orderCode}*\n` +
@@ -886,8 +888,8 @@ Seja tolerante — aceite imagens de paletas de cores, decorações, temas de fe
             `*Celular:* ${customer?.phone || 'N/A'}\n` +
             `*Valor da reserva:* R$ ${depositValue.toFixed(2).replace('.', ',')}\n` +
             `*Total do pedido:* R$ ${Number(order.total).toFixed(2).replace('.', ',')}` +
-            `${divergenceWarning}\n\n` +
-            `Acesse o pedido: ${orderLink}`
+            `${divergenceWarning}` +
+            orderLinkLine
 
           await evolutionApi.post(`/message/sendText/${instance.instanceName}`, {
             number: whatsappNumber,

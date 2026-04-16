@@ -1199,8 +1199,12 @@ export class OpenAiService {
               const orderCode = String(order.orderNumber).padStart(5, '0')
               const depositValue = proofAmount !== null ? proofAmount : (order.reservation ? Number(order.reservation) : Number(order.total))
               const divergenceWarning = valueDivergent ? '\n*Atenção:* Valor do comprovante divergente do esperado!' : ''
-              const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173'
-              const orderLink = `${frontendUrl}/client/orders/${orderCode}`
+              // So inclui link se FRONTEND_URL estiver configurado em env
+              // (evita enviar links quebrados como http://localhost:5173/...)
+              const frontendUrl = process.env.FRONTEND_URL
+              const orderLinkLine = frontendUrl
+                ? `\n\nAcesse o pedido: ${frontendUrl.replace(/\/$/, '')}/client/orders/${orderCode}`
+                : ''
 
               const notifyMsg = `*Novo comprovante de reserva recebido!*\n\n` +
                 `*Pedido #${orderCode}*\n` +
@@ -1208,8 +1212,8 @@ export class OpenAiService {
                 `*Celular:* ${order.customerPhone || 'N/A'}\n` +
                 `*Valor da reserva:* R$ ${depositValue.toFixed(2).replace('.', ',')}\n` +
                 `*Total do pedido:* R$ ${Number(order.total).toFixed(2).replace('.', ',')}` +
-                `${divergenceWarning}\n\n` +
-                `Acesse o pedido: ${orderLink}`
+                `${divergenceWarning}` +
+                orderLinkLine
 
               await evolutionApi.post(`/message/sendText/${this._currentInstanceName}`, {
                 number: whatsappNumber,
