@@ -1589,6 +1589,11 @@ export class OpenAiService {
     return 0
   }
 
+  // Limpa o histórico de uma conversa específica (usado pelo simulador)
+  resetConversation(remoteJid) {
+    conversationCache.delete(remoteJid)
+  }
+
   // Obtém ou cria contexto de conversa
   getConversation(remoteJid) {
     const existing = conversationCache.get(remoteJid)

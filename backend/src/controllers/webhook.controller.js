@@ -1,10 +1,10 @@
 import prisma from '../config/database.js'
 import evolutionApi from '../config/evolution.js'
 import openai from '../config/openai.js'
-import { OpenAiService } from '../services/openai.service.js'
+// openAiService singleton importado abaixo
 import { Readable } from 'stream'
 
-const openAiService = new OpenAiService()
+import openAiService from '../services/openai-instance.js'
 
 // Envia indicador "digitando..." no WhatsApp
 async function sendTyping(instanceName, remoteJid) {

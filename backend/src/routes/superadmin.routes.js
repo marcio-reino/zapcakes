@@ -56,4 +56,9 @@ export async function superadminRoutes(app) {
   // Config
   app.get('/config', controller.getConfig)
   app.put('/config', controller.updateConfig)
+
+  // Simulador do agente IA
+  app.get('/simulator/accounts', controller.simulatorAccounts)
+  app.post('/simulator/send', controller.simulatorSend)
+  app.post('/simulator/reset', controller.simulatorReset)
 }

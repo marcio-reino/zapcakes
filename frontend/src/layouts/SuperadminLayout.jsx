@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Outlet, Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import { useTheme } from '../contexts/ThemeContext.jsx'
-import { FiHome, FiUsers, FiCreditCard, FiDollarSign, FiSettings, FiLogOut, FiMoon, FiSun, FiMenu, FiX, FiCpu } from 'react-icons/fi'
+import { FiHome, FiUsers, FiCreditCard, FiDollarSign, FiSettings, FiLogOut, FiMoon, FiSun, FiMenu, FiX, FiCpu, FiMessageSquare } from 'react-icons/fi'
 import logo from '../assets/logo.svg'
 
 const PREFIX = '/admin-cwxp15'
@@ -13,6 +13,7 @@ const menuItems = [
   { path: `${PREFIX}/plans`, icon: FiCreditCard, label: 'Planos' },
   { path: `${PREFIX}/financial`, icon: FiDollarSign, label: 'Financeiro' },
   { path: `${PREFIX}/ai`, icon: FiCpu, label: 'IA' },
+  { path: `${PREFIX}/simulator`, icon: FiMessageSquare, label: 'Agente Teste' },
   { path: `${PREFIX}/config`, icon: FiSettings, label: 'Configurações' },
 ]
 

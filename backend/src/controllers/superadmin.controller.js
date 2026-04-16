@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url'
 import prisma from '../config/database.js'
 import evolutionApi from '../config/evolution.js'
 import { sendMail } from '../services/mail.service.js'
+import openAiService from '../services/openai-instance.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -996,5 +997,68 @@ export class SuperadminController {
         count: c._count,
       })),
     }
+  }
+
+  // Simulador do agente IA — lista contas elegíveis (com instruções cadastradas)
+  async simulatorAccounts(request, reply) {
+    const accounts = await prisma.user.findMany({
+      where: {
+        role: 'CLIENT',
+        active: true,
+        agentInstructions: { some: { active: true } },
+      },
+      select: {
+        id: true,
+        name: true,
+        account: { select: { companyName: true, slug: true } },
+        _count: { select: { agentInstructions: true } },
+      },
+      orderBy: { name: 'asc' },
+    })
+    return accounts.map((u) => ({
+      userId: u.id,
+      name: u.name,
+      companyName: u.account?.companyName || null,
+      slug: u.account?.slug || null,
+      instructions: u._count?.agentInstructions || 0,
+    }))
+  }
+
+  // Envia mensagem para o agente como se fosse um cliente via WhatsApp
+  // Body: { userId: number, sessionId: string, message: string }
+  async simulatorSend(request, reply) {
+    const { userId, sessionId, message } = request.body || {}
+    if (!userId || !sessionId || !message || !String(message).trim()) {
+      return reply.status(400).send({ error: 'userId, sessionId e message sao obrigatorios' })
+    }
+
+    const owner = await prisma.user.findUnique({ where: { id: Number(userId) } })
+    if (!owner) return reply.status(404).send({ error: 'Conta nao encontrada' })
+
+    // sessionId vira um remoteJid fake isolado deste superadmin
+    // Formato WhatsApp: <numeros>@s.whatsapp.net (Evolution espera esse sufixo
+    // em algumas tools). Usamos um prefixo fixo que identifica simulador.
+    const remoteJid = `sim${String(sessionId).replace(/[^\w-]/g, '').slice(0, 40)}@s.whatsapp.net`
+
+    try {
+      const reply_ = await openAiService.chat(Number(userId), remoteJid, String(message), null)
+      return {
+        reply: reply_ || '(sem resposta em texto — comando especial executado)',
+        remoteJid,
+      }
+    } catch (err) {
+      return reply.status(500).send({ error: 'Erro ao processar mensagem', details: err.message })
+    }
+  }
+
+  // Limpa o histórico de conversa da sessão (novo chat)
+  async simulatorReset(request, reply) {
+    const { userId, sessionId } = request.body || {}
+    if (!userId || !sessionId) {
+      return reply.status(400).send({ error: 'userId e sessionId sao obrigatorios' })
+    }
+    const remoteJid = `sim${String(sessionId).replace(/[^\w-]/g, '').slice(0, 40)}@s.whatsapp.net`
+    openAiService.resetConversation(remoteJid)
+    return { ok: true }
   }
 }
