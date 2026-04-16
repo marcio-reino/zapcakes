@@ -95,6 +95,32 @@ async function expandSimulatorMarkers(text, userId) {
     out = out.replace(/\[MOSTRAR_COMBOS\]/gi, block)
   }
 
+  // [MOSTRAR_ADICIONAL:Descricao]
+  const addRegex = /\[MOSTRAR_ADICIONAL:\s*([^\]]+?)\]/gi
+  const addMatches = [...out.matchAll(addRegex)]
+  for (const m of addMatches) {
+    const termo = m[1].trim()
+    const candidates = await prisma.additional.findMany({
+      where: { userId, active: true },
+    })
+    const lower = termo.toLowerCase()
+    const a =
+      candidates.find((x) => x.description.toLowerCase() === lower) ||
+      candidates.find((x) => x.description.toLowerCase().includes(lower)) ||
+      candidates.find((x) => lower.includes(x.description.toLowerCase())) ||
+      null
+    let block
+    if (!a) {
+      block = `\n\n_(Adicional "${termo}" não encontrado)_\n`
+    } else {
+      const pieces = [`\n\n➕ *${a.description}*`, `${BRL(a.price)}`]
+      if (a.imageUrl) pieces.push(`🖼 foto: ${a.imageUrl}`)
+      else pieces.push(`_(sem foto de exemplo cadastrada)_`)
+      block = pieces.join('\n') + '\n'
+    }
+    out = out.replace(m[0], block)
+  }
+
   // [ENVIAR_ANEXO:ID] — simplesmente indica o ID da instrução cujo anexo seria enviado
   const anexoRegex = /\[ENVIAR_ANEXO:\s*(\d+)\s*\]/gi
   const anexoMatches = [...out.matchAll(anexoRegex)]

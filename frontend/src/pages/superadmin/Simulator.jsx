@@ -7,6 +7,31 @@ function genSessionId() {
   return `${Date.now()}${Math.random().toString(36).slice(2, 8)}`
 }
 
+// Renderiza o conteudo da mensagem do agente detectando URLs de imagem
+// (no formato "🖼 foto: https://..."); o restante fica como texto.
+function renderContent(content) {
+  if (!content) return null
+  const imgUrlRegex = /https?:\/\/\S+\.(?:jpg|jpeg|png|webp|gif)(?:\?\S*)?/gi
+  const parts = []
+  let lastIdx = 0
+  let match
+  let key = 0
+  while ((match = imgUrlRegex.exec(content)) !== null) {
+    if (match.index > lastIdx) {
+      parts.push(<span key={key++}>{content.slice(lastIdx, match.index)}</span>)
+    }
+    const url = match[0]
+    parts.push(
+      <a key={key++} href={url} target="_blank" rel="noopener noreferrer" className="block my-2">
+        <img src={url} alt="" className="max-h-48 rounded-lg border border-gray-200 dark:border-gray-700" />
+      </a>
+    )
+    lastIdx = match.index + url.length
+  }
+  if (lastIdx < content.length) parts.push(<span key={key++}>{content.slice(lastIdx)}</span>)
+  return parts.length ? parts : content
+}
+
 export default function SuperadminSimulator() {
   const [accounts, setAccounts] = useState([])
   const [loadingAccounts, setLoadingAccounts] = useState(true)
@@ -149,7 +174,7 @@ export default function SuperadminSimulator() {
                     ? 'bg-red-50 text-red-700 border border-red-200 rounded-bl-none dark:bg-red-900/30 dark:text-red-300 dark:border-red-800'
                     : 'bg-white text-gray-800 border border-gray-200 rounded-bl-none dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700'
               }`}>
-                {m.content}
+                {renderContent(m.content)}
               </div>
               {m.role === 'user' && (
                 <div className="w-8 h-8 rounded-full bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300 flex items-center justify-center flex-shrink-0">

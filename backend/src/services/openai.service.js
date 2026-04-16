@@ -393,6 +393,56 @@ export class OpenAiService {
     })
   }
 
+  // Envia a foto de exemplo de um adicional pelo WhatsApp
+  async sendAdditionalImage(userId, instanceName, remoteJid, additionalName) {
+    const number = remoteJid.replace('@s.whatsapp.net', '')
+    const termo = String(additionalName || '').trim()
+
+    const candidates = await prisma.additional.findMany({
+      where: { userId, active: true },
+    })
+    const lower = termo.toLowerCase()
+    const additional =
+      candidates.find((a) => a.description.toLowerCase() === lower) ||
+      candidates.find((a) => a.description.toLowerCase().includes(lower)) ||
+      candidates.find((a) => lower.includes(a.description.toLowerCase())) ||
+      null
+
+    if (!additional) {
+      await evolutionApi.post(`/message/sendText/${instanceName}`, {
+        number,
+        text: `Não encontrei um adicional com o nome "${termo}". Me diga o nome exato que eu mostro.`,
+      })
+      return
+    }
+
+    const price = Number(additional.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+    const caption = `*${additional.description}*\n+ ${price}`
+
+    await this.sendTyping(instanceName, remoteJid)
+
+    if (additional.imageUrl) {
+      try {
+        await evolutionApi.post(`/message/sendMedia/${instanceName}`, {
+          number,
+          mediatype: 'image',
+          media: additional.imageUrl,
+          caption,
+        })
+      } catch {
+        await evolutionApi.post(`/message/sendText/${instanceName}`, {
+          number,
+          text: caption,
+        })
+      }
+    } else {
+      await evolutionApi.post(`/message/sendText/${instanceName}`, {
+        number,
+        text: `${caption}\n\n_(sem foto de exemplo cadastrada)_`,
+      })
+    }
+  }
+
   // Envia combos como mensagens individuais com imagem no WhatsApp
   async sendComboImages(userId, instanceName, remoteJid) {
     const number = remoteJid.replace('@s.whatsapp.net', '')
@@ -1284,6 +1334,7 @@ export class OpenAiService {
     prompt += `4. Quando o cliente escolher um produto e quantidade, CONFIRME o item adicionado (ex: "Adicionei 2x Bolo de Chocolate - R$ 120,00")\n`
     prompt += `   - Se o produto tiver a marcação "📷 Aceita imagens de inspiração" no catálogo, pergunte ao cliente: "Você gostaria de enviar imagens de inspiração/referência para esse produto? (fotos do tema, decoração, etc)". Se o cliente quiser enviar, peça as imagens (respeitando o máximo indicado no catálogo). Se não quiser, siga normalmente.\n`
     prompt += `   - Se o produto listar uma seção "Adicionais disponíveis" logo abaixo dele no catálogo, PERGUNTE ao cliente se deseja incluir algum adicional, listando o nome e o preço de cada um. Se o cliente aceitar, registre os adicionais escolhidos no item (em "additionals" de criar_pedido, usando o nome exato do adicional). Se recusar ou o produto não tiver adicionais, siga normalmente.\n`
+    prompt += `   - Se o cliente pedir para ver FOTO / EXEMPLO / IMAGEM de um adicional específico (ex.: "tem foto do recheio especial?", "como é a cobertura extra?"), responda APENAS com o comando [MOSTRAR_ADICIONAL:Nome do adicional] usando o nome exato do catálogo. O sistema enviará automaticamente a imagem cadastrada. NÃO escreva texto antes ou depois do comando.\n`
     prompt += `   - Depois pergunte se deseja mais algum produto\n`
     prompt += `5. O cliente pode adicionar mais produtos ao pedido. Mantenha a lista mental de TODOS os itens pedidos com nome, quantidade e preço unitário\n`
     prompt += `6. Quando o cliente quiser finalizar o pedido, ANTES de confirmar, siga este fluxo obrigatório:\n\n`
@@ -1716,6 +1767,14 @@ export class OpenAiService {
     if (reply.includes('[MOSTRAR_COMBOS]')) {
       await this.sendComboImages(userId, instanceName, remoteJid)
       return { reply: '[Imagens dos combos enviadas ao cliente]', handled: true }
+    }
+
+    // Comando: mostrar foto de exemplo de um adicional
+    const additionalMatch = reply.match(/\[MOSTRAR_ADICIONAL:(.+?)\]/)
+    if (additionalMatch) {
+      const additionalName = additionalMatch[1].trim()
+      await this.sendAdditionalImage(userId, instanceName, remoteJid, additionalName)
+      return { reply: `[Foto do adicional "${additionalName}" enviada ao cliente]`, handled: true }
     }
 
     // Comando: enviar anexo de instrução (pode ter texto junto)
