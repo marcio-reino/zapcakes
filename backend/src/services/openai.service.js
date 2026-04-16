@@ -4,7 +4,6 @@ import evolutionApi from '../config/evolution.js'
 import { randomUUID } from 'node:crypto'
 import { PutObjectCommand } from '@aws-sdk/client-s3'
 import s3Client, { S3_BUCKET } from '../config/s3.js'
-import { randomUUID } from 'crypto'
 import bcrypt from 'bcryptjs'
 
 // Normaliza telefone: remove não-dígitos e prefixo 55 se necessário
