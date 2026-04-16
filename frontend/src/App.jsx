@@ -57,6 +57,7 @@ import SuperadminFinancial from './pages/superadmin/Financial.jsx'
 import SuperadminConfig from './pages/superadmin/Config.jsx'
 import SuperadminAI from './pages/superadmin/AI.jsx'
 import SuperadminSimulator from './pages/superadmin/Simulator.jsx'
+import SuperadminOrders from './pages/superadmin/Orders.jsx'
 
 function getHomeRoute(role) {
   if (role === 'SUPERADMIN') return '/admin-cwxp15'
@@ -124,6 +125,7 @@ export default function App() {
         <Route path="financial" element={<SuperadminFinancial />} />
         <Route path="ai" element={<SuperadminAI />} />
         <Route path="simulator" element={<SuperadminSimulator />} />
+        <Route path="orders" element={<SuperadminOrders />} />
         <Route path="config" element={<SuperadminConfig />} />
       </Route>
 

@@ -1127,6 +1127,51 @@ export class SuperadminController {
     }
   }
 
+  // Lista todos os pedidos da plataforma (agregado multi-tenant)
+  async listAllOrders(request, reply) {
+    const { status, search, from, to } = request.query || {}
+    const where = {}
+    if (status) where.status = status
+    if (from || to) {
+      where.createdAt = {}
+      if (from) where.createdAt.gte = new Date(from)
+      if (to) {
+        const end = new Date(to)
+        end.setDate(end.getDate() + 1)
+        where.createdAt.lt = end
+      }
+    }
+    if (search) {
+      const term = String(search).trim()
+      const n = Number(term)
+      where.OR = [
+        { customerName: { contains: term } },
+        { customerPhone: { contains: term.replace(/\D/g, '') || term } },
+        { user: { name: { contains: term } } },
+        { user: { account: { companyName: { contains: term } } } },
+      ]
+      if (!isNaN(n) && n > 0) where.OR.push({ orderNumber: n })
+    }
+
+    const orders = await prisma.order.findMany({
+      where,
+      include: {
+        items: { include: { product: true, attachments: true, additionals: true } },
+        customer: { select: { id: true, name: true, phone: true } },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            account: { select: { companyName: true, slug: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+    })
+    return orders
+  }
+
   // Simulador do agente IA — lista contas elegíveis (com instruções cadastradas)
   async simulatorAccounts(request, reply) {
     const accounts = await prisma.user.findMany({

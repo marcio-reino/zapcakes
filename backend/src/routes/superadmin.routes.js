@@ -61,4 +61,7 @@ export async function superadminRoutes(app) {
   app.get('/simulator/accounts', controller.simulatorAccounts)
   app.post('/simulator/send', controller.simulatorSend)
   app.post('/simulator/reset', controller.simulatorReset)
+
+  // Pedidos agregados (todas as contas)
+  app.get('/orders', controller.listAllOrders)
 }
