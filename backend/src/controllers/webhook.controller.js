@@ -66,6 +66,47 @@ async function transcribeAudio(instanceName, messageId) {
 }
 
 // Baixa imagem da Evolution API e retorna data URL para o GPT-4o
+// Reverse geocoding via OpenStreetMap Nominatim (gratuito, sem chave)
+async function reverseGeocode(lat, lng) {
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1&accept-language=pt-BR`
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'ZapCakes/1.0 (contato@mach9.com.br)',
+      },
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    if (!data?.address) return null
+    const a = data.address
+    const parts = []
+    const street = a.road || a.pedestrian || a.footway || a.path
+    if (street) parts.push(street)
+    const houseNumber = a.house_number
+    const neighborhood = a.suburb || a.neighbourhood || a.quarter || a.district
+    if (neighborhood) parts.push(`Bairro ${neighborhood}`)
+    const city = a.city || a.town || a.village || a.municipality
+    if (city) parts.push(city)
+    const state = a.state_code || a.state
+    if (state) parts.push(state)
+    const postcode = a.postcode
+    if (postcode) parts.push(`CEP ${postcode}`)
+    return {
+      formatted: parts.join(', ') || data.display_name || null,
+      displayName: data.display_name || null,
+      street,
+      houseNumber,
+      neighborhood: neighborhood || null,
+      city: city || null,
+      state: state || null,
+      postcode: postcode || null,
+    }
+  } catch {
+    return null
+  }
+}
+
 async function getImageDataUrl(instanceName, messageId) {
   try {
     const base64 = await getMediaBase64(instanceName, messageId)
@@ -164,7 +205,30 @@ export class WebhookController {
         } else if (message.message?.contactMessage) {
           textContent = `[Contato recebido: ${message.message.contactMessage.displayName || 'contato'}]`
         } else if (message.message?.locationMessage) {
-          textContent = `[Localização recebida: ${message.message.locationMessage.degreesLatitude}, ${message.message.locationMessage.degreesLongitude}]`
+          const loc = message.message.locationMessage
+          const lat = loc.degreesLatitude
+          const lng = loc.degreesLongitude
+          const mapsUrl = `https://www.google.com/maps?q=${lat},${lng}`
+          const userName = loc.name || null
+          const userAddr = loc.address || null
+
+          // Tenta resolver endereço via reverse geocoding
+          const geo = await reverseGeocode(lat, lng)
+
+          const lines = []
+          lines.push('[LOCALIZAÇÃO COMPARTILHADA PELO CLIENTE via WhatsApp]')
+          lines.push(`Coordenadas: ${lat}, ${lng}`)
+          lines.push(`Google Maps: ${mapsUrl}`)
+          if (userName) lines.push(`Nome do local (do cliente): ${userName}`)
+          if (userAddr) lines.push(`Endereço (do cliente): ${userAddr}`)
+          if (geo?.formatted) {
+            lines.push(`Endereço resolvido: ${geo.formatted}`)
+            if (geo.neighborhood) lines.push(`Bairro: ${geo.neighborhood}`)
+            if (geo.city) lines.push(`Cidade: ${geo.city}`)
+          }
+          lines.push('')
+          lines.push('INSTRUÇÃO: use este endereço como local de entrega (deliveryAddress) deste pedido. Inclua o link do Google Maps e as coordenadas no campo "notes" (observações) do pedido para o entregador encontrar o ponto exato. NÃO altere o cadastro do cliente. Se necessário, peça ao cliente apenas para confirmar o número/complemento do local antes de criar o pedido.')
+          textContent = lines.join('\n')
         } else {
           textContent = '[Mensagem não suportada]'
         }

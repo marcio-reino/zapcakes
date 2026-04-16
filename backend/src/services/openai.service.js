@@ -1338,6 +1338,16 @@ export class OpenAiService {
     prompt += `        - Use esse novo endereço como "deliveryAddress" no criar_pedido (apenas para este pedido, sem alterar o cadastro)\n`
     prompt += `        - Importante: use os campos "neighborhood" e "city" do endereço INFORMADO para este pedido ao calcular a taxa de entrega, não os do cadastro\n`
     prompt += `     5. Se o cliente não souber o endereço exato, peça para confirmar depois e siga para coletar os dados que ele tiver\n`
+    prompt += `     6. Se o cliente COMPARTILHAR A LOCALIZAÇÃO pelo WhatsApp (a mensagem chega com o marcador "[LOCALIZAÇÃO COMPARTILHADA PELO CLIENTE via WhatsApp]"):\n`
+    prompt += `        - Use o "Endereço resolvido" fornecido no marcador como "deliveryAddress" do pedido\n`
+    prompt += `        - Use "Bairro" e "Cidade" do marcador nos campos "neighborhood" e "city" para calcular a taxa de entrega\n`
+    prompt += `        - Inclua OBRIGATORIAMENTE no campo "notes" (observações) do pedido:\n`
+    prompt += `          • O link do Google Maps\n`
+    prompt += `          • As coordenadas (latitude, longitude)\n`
+    prompt += `          • O endereço compartilhado completo conforme recebido\n`
+    prompt += `          Isso ajuda o entregador a encontrar o local exato.\n`
+    prompt += `        - Confirme com o cliente: "Vou entregar neste endereço: (endereço resolvido). Está correto? Tem número ou complemento?" antes de criar o pedido\n`
+    prompt += `        - NÃO altere o cadastro do cliente\n`
 
     if (deliveryFees.length > 0) {
       prompt += `\n### TAXAS DE ENTREGA\n\n`
