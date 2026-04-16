@@ -6,6 +6,7 @@ import ConfirmModal from '../../components/ConfirmModal.jsx'
 import Modal from '../../components/Modal.jsx'
 import DatePicker from '../../components/DatePicker.jsx'
 import AgendaModal from '../../components/AgendaModal.jsx'
+import OrderNotes from '../../components/OrderNotes.jsx'
 import { FiCheckCircle, FiImage, FiFile, FiX, FiXCircle, FiTruck, FiDollarSign, FiSearch, FiRefreshCw, FiCalendar, FiAlertTriangle, FiPrinter, FiSettings, FiEdit2, FiSave, FiMessageSquare, FiPackage, FiChevronDown, FiChevronUp } from 'react-icons/fi'
 import { jsPDF } from 'jspdf'
 
@@ -953,7 +954,9 @@ export default function ClientOrders() {
                   <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1 flex items-center gap-1">
                     <FiMessageSquare size={12} /> Observações do Cliente
                   </p>
-                  <p className="text-sm text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700/50 rounded-lg px-3 py-2">{order.notes}</p>
+                  <div className="text-sm text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700/50 rounded-lg px-3 py-2">
+                    <OrderNotes text={order.notes} />
+                  </div>
                 </div>
               )}
 
