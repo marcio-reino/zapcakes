@@ -10,6 +10,108 @@ import openAiService from '../services/openai-instance.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
+const BRL = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
+// Expande markers do agente ([MOSTRAR_PRODUTOS:Cat], [MOSTRAR_COMBOS], [ENVIAR_ANEXO:N])
+// em texto legivel no simulador. Em producao isso viraria envio de imagens
+// via Evolution API — aqui mostramos a lista real dos itens cadastrados.
+async function expandSimulatorMarkers(text, userId) {
+  if (!text) return text
+  let out = text
+
+  // [MOSTRAR_PRODUTOS:Nome da Categoria]
+  const prodRegex = /\[MOSTRAR_PRODUTOS:\s*([^\]]+?)\]/gi
+  const prodMatches = [...out.matchAll(prodRegex)]
+  for (const m of prodMatches) {
+    const catName = m[1].trim()
+    const cat = await prisma.category.findFirst({
+      where: { userId, active: true, name: { contains: catName } },
+      include: {
+        products: {
+          where: { active: true },
+          orderBy: { name: 'asc' },
+          include: {
+            productAdditionals: {
+              where: { additional: { active: true } },
+              include: { additional: true },
+              orderBy: { sortOrder: 'asc' },
+            },
+          },
+        },
+      },
+    })
+    let block
+    if (!cat) {
+      block = `\n\n_(Categoria "${catName}" não encontrada)_\n`
+    } else if (cat.products.length === 0) {
+      block = `\n\n📂 *${cat.name}* — nenhum produto ativo\n`
+    } else {
+      const lines = [`\n\n📸 *Produtos: ${cat.name}*`]
+      for (const p of cat.products) {
+        const line = [`• *${p.name}* — ${BRL(p.price)}`]
+        if (p.description) line.push(`  _${p.description}_`)
+        const extras = []
+        if (p.minOrder > 1) extras.push(`mín: ${p.minOrder}`)
+        if (p.maxOrder && p.maxOrder < 500) extras.push(`máx: ${p.maxOrder}`)
+        if (p.allowInspirationImages) extras.push(`📷 aceita inspiração`)
+        if (p.imageUrl) extras.push(`🖼 foto: ${p.imageUrl}`)
+        if (extras.length) line.push(`  (${extras.join(' · ')})`)
+        if (p.productAdditionals?.length) {
+          line.push(`  Adicionais:`)
+          for (const pa of p.productAdditionals) {
+            line.push(`    ◦ ${pa.additional.description} — ${BRL(pa.additional.price)}`)
+          }
+        }
+        lines.push(line.join('\n'))
+      }
+      block = lines.join('\n') + '\n'
+    }
+    out = out.replace(m[0], block)
+  }
+
+  // [MOSTRAR_COMBOS]
+  if (/\[MOSTRAR_COMBOS\]/i.test(out)) {
+    const combos = await prisma.combo.findMany({
+      where: { userId, active: true },
+      include: { items: { include: { product: true }, orderBy: { sortOrder: 'asc' } } },
+      orderBy: { name: 'asc' },
+    })
+    let block
+    if (combos.length === 0) {
+      block = `\n\n_(Nenhum combo ativo cadastrado)_\n`
+    } else {
+      const lines = [`\n\n🎉 *Combos / Promoções*`]
+      for (const c of combos) {
+        const itemsTotal = c.items.reduce((s, it) => s + Number(it.product.price) * it.quantity, 0)
+        const final = itemsTotal - Number(c.discount || 0)
+        const itemsText = c.items.map((it) => `${it.quantity}x ${it.product.name}`).join(' + ')
+        lines.push(`• *${c.name}* — ${BRL(final)} ${Number(c.discount) > 0 ? `(desconto ${BRL(c.discount)})` : ''}`)
+        lines.push(`  ${itemsText}`)
+        if (c.description) lines.push(`  _${c.description}_`)
+        if (c.imageUrl) lines.push(`  🖼 foto: ${c.imageUrl}`)
+      }
+      block = lines.join('\n') + '\n'
+    }
+    out = out.replace(/\[MOSTRAR_COMBOS\]/gi, block)
+  }
+
+  // [ENVIAR_ANEXO:ID] — simplesmente indica o ID da instrução cujo anexo seria enviado
+  const anexoRegex = /\[ENVIAR_ANEXO:\s*(\d+)\s*\]/gi
+  const anexoMatches = [...out.matchAll(anexoRegex)]
+  for (const m of anexoMatches) {
+    const inst = await prisma.agentInstruction.findFirst({
+      where: { id: Number(m[1]), userId, active: true },
+      select: { title: true, imageUrl: true },
+    })
+    const label = inst
+      ? `\n\n📎 _(Anexo: ${inst.title}${inst.imageUrl ? ` — ${inst.imageUrl}` : ''})_\n`
+      : `\n\n📎 _(Anexo id ${m[1]} não encontrado)_\n`
+    out = out.replace(m[0], label)
+  }
+
+  return out
+}
+
 const CODE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
 async function generateUniquePaymentCode() {
   for (let i = 0; i < 50; i++) {
@@ -1041,11 +1143,25 @@ export class SuperadminController {
     const remoteJid = `sim${String(sessionId).replace(/[^\w-]/g, '').slice(0, 40)}@s.whatsapp.net`
 
     try {
-      const reply_ = await openAiService.chat(Number(userId), remoteJid, String(message), null)
-      return {
-        reply: reply_ || '(sem resposta em texto — comando especial executado)',
-        remoteJid,
-      }
+      // No simulador, chamamos direto o modelo sem deixar o processCommands
+      // interceptar markers como [MOSTRAR_PRODUTOS:X] (que em producao enviam
+      // imagens via Evolution). Aqui convertemos esses markers em texto.
+      openAiService._currentRemoteJid = remoteJid
+      openAiService._currentInstanceName = null
+
+      const systemPrompt = await openAiService.buildSystemPrompt(Number(userId))
+      openAiService.addMessage(remoteJid, 'user', String(message))
+      const msgs = [
+        { role: 'system', content: systemPrompt },
+        ...openAiService.getConversation(remoteJid),
+      ]
+      let raw = await openAiService.processWithTools(msgs, Number(userId), remoteJid, null)
+
+      // Expande markers do agente em listas legiveis para o simulador
+      const expanded = await expandSimulatorMarkers(raw, Number(userId))
+      openAiService.addMessage(remoteJid, 'assistant', raw)
+
+      return { reply: expanded, remoteJid }
     } catch (err) {
       return reply.status(500).send({ error: 'Erro ao processar mensagem', details: err.message })
     }
