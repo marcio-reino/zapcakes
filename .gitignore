@@ -4,6 +4,9 @@ material/
 .env
 .env.production
 .env.local
+.env.*.backup
+.env.*-BACKUP
+.env.LOCAL-BACKUP
 deploy/**/.env
 *.log
 .DS_Store
