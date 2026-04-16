@@ -209,7 +209,7 @@ export default function AdminProducts() {
         <div className="flex gap-2">
           <button
             onClick={() => setShowAdditionalsModal(true)}
-            className="bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 px-4 py-2 rounded-lg flex items-center gap-2"
+            className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center gap-2"
           >
             <FiPackage size={18} /> Adicionais
           </button>
