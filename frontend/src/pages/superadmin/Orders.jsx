@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import api from '../../services/api.js'
 import toast from 'react-hot-toast'
 import { FiSearch, FiRefreshCw, FiChevronDown, FiChevronUp, FiMessageSquare, FiCalendar, FiExternalLink, FiUser } from 'react-icons/fi'
+import DatePicker from '../../components/DatePicker.jsx'
 
 const BRL = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const padId = (id) => String(id).padStart(5, '0')
@@ -104,7 +105,7 @@ export default function SuperadminOrders() {
         </div>
         <button
           onClick={load}
-          className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 text-sm"
+          className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 shadow-sm text-sm"
         >
           <FiRefreshCw size={15} /> Atualizar
         </button>
@@ -157,12 +158,13 @@ export default function SuperadminOrders() {
             <option key={a} value={a}>{a}</option>
           ))}
         </select>
-        <input
-          type="date"
-          value={filterDate}
-          onChange={(e) => setFilterDate(e.target.value)}
-          className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white text-sm outline-none"
-        />
+        <div className="min-w-[180px]">
+          <DatePicker
+            value={filterDate}
+            onChange={(v) => setFilterDate(v || '')}
+            placeholder="Filtrar por data"
+          />
+        </div>
         {(filterStatus || filterAccount || filterDate || appliedSearch) && (
           <button
             onClick={() => { setFilterStatus(''); setFilterAccount(''); setFilterDate(''); setSearch(''); setAppliedSearch('') }}
@@ -191,6 +193,20 @@ export default function SuperadminOrders() {
                 <div className="flex-1 min-w-[200px]">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-bold text-gray-800 dark:text-white">Pedido #{padId(o.orderNumber)}</span>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium text-xs">
+                      🏪 {storeName}
+                    </span>
+                    {storeSlug && (
+                      <a
+                        href={`/loja/${storeSlug}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-indigo-500 hover:text-indigo-700 inline-flex items-center"
+                        title="Abrir loja"
+                      >
+                        <FiExternalLink size={12} />
+                      </a>
+                    )}
                     <span className={`px-2 py-0.5 rounded-full text-xs ${statusColors[o.status] || ''}`}>
                       {statusLabels[o.status] || o.status}
                     </span>
@@ -201,20 +217,6 @@ export default function SuperadminOrders() {
                     )}
                   </div>
                   <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 mt-1 flex-wrap">
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium">
-                      🏪 {storeName}
-                    </span>
-                    {storeSlug && (
-                      <a
-                        href={`/loja/${storeSlug}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-indigo-500 hover:text-indigo-700 inline-flex items-center gap-0.5"
-                        title="Abrir loja"
-                      >
-                        <FiExternalLink size={12} />
-                      </a>
-                    )}
                     <span className="inline-flex items-center gap-1">
                       <FiUser size={12} /> {o.customerName}
                     </span>
