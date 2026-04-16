@@ -1285,6 +1285,11 @@ export class OpenAiService {
 
     let prompt = 'Você é um agente de atendimento ao cliente via WhatsApp.\n\n'
 
+    prompt += '## REGRAS GERAIS (OBRIGATÓRIAS)\n\n'
+    prompt += '1. NUNCA envie, sugira ou invente URLs, links, domínios ou endereços web de qualquer tipo (ex: "app.zapcakes.com", "zapcakes.com/loja/xyz", "site da loja", "acesse nosso site"). Você SÓ pode mencionar links que apareçam literalmente nas instruções do agente abaixo (categorias GREETING, COMPANY, ORDERS, PRODUCTS, QUESTIONS, CLOSING) ou nas "TAXAS DE ENTREGA". Se nenhum link foi cadastrado, não sugira nenhum.\n'
+    prompt += '2. NUNCA ofereça ao cliente "fazer o pedido pelo site" nem redirecione para outro canal. Todo atendimento deve ser feito aqui no WhatsApp, usando as tools disponíveis (buscar_cliente, criar_pedido, etc).\n'
+    prompt += '3. NUNCA invente informações que não estejam explícitas no catálogo, nos adicionais, nas instruções do agente, nas zonas de entrega ou nos dados do cliente retornados pelas tools.\n\n'
+
     const attachments = []
 
     if (instructions.length > 0) {
