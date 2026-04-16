@@ -1,0 +1,26 @@
+services:
+  api:
+    build:
+      context: /opt/zapcakes/repo
+      dockerfile: /opt/zapcakes/repo/deploy/zapcakes-api/Dockerfile
+    image: zapcakes-api:latest
+    container_name: zapcakes-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.zapcakes-api.rule=Host(`api.zapcakes.com`)
+      - traefik.http.routers.zapcakes-api.entrypoints=websecure
+      - traefik.http.routers.zapcakes-api.tls.certresolver=letsencrypt
+      - traefik.http.services.zapcakes-api.loadbalancer.server.port=8080
+    networks:
+      - traefik_network
+      - mysql_network
+
+networks:
+  traefik_network:
+    external: true
+  mysql_network:
+    external: true
+    name: zapcakes-mysql_default

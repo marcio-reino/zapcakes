@@ -1,0 +1,20 @@
+services:
+  site:
+    build:
+      context: /opt/zapcakes/repo
+      dockerfile: /opt/zapcakes/repo/deploy/zapcakes-site/Dockerfile
+    image: zapcakes-site:latest
+    container_name: zapcakes-site
+    restart: unless-stopped
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.zapcakes-site.rule=Host(`www.zapcakes.com`) || Host(`zapcakes.com`)
+      - traefik.http.routers.zapcakes-site.entrypoints=websecure
+      - traefik.http.routers.zapcakes-site.tls.certresolver=letsencrypt
+      - traefik.http.services.zapcakes-site.loadbalancer.server.port=80
+    networks:
+      - traefik_network
+
+networks:
+  traefik_network:
+    external: true

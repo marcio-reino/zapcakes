@@ -1,0 +1,34 @@
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: zapcakes-minio
+    restart: unless-stopped
+    command: minio server /data --console-address ":9001"
+    env_file:
+      - .env
+    volumes:
+      - minio_data:/data
+    labels:
+      - traefik.enable=true
+      # S3 API
+      - traefik.http.routers.zapcakes-minio-api.rule=Host(`s3.zapcakes.com`)
+      - traefik.http.routers.zapcakes-minio-api.entrypoints=websecure
+      - traefik.http.routers.zapcakes-minio-api.tls.certresolver=letsencrypt
+      - traefik.http.routers.zapcakes-minio-api.service=zapcakes-minio-api
+      - traefik.http.services.zapcakes-minio-api.loadbalancer.server.port=9000
+      # Console
+      - traefik.http.routers.zapcakes-minio-console.rule=Host(`minioweb.zapcakes.com`)
+      - traefik.http.routers.zapcakes-minio-console.entrypoints=websecure
+      - traefik.http.routers.zapcakes-minio-console.tls.certresolver=letsencrypt
+      - traefik.http.routers.zapcakes-minio-console.service=zapcakes-minio-console
+      - traefik.http.services.zapcakes-minio-console.loadbalancer.server.port=9001
+    networks:
+      - traefik_network
+      - default
+
+volumes:
+  minio_data:
+
+networks:
+  traefik_network:
+    external: true
