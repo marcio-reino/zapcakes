@@ -124,7 +124,7 @@ export default function SuperadminOrders() {
       </div>
 
       {/* Filtros */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm mb-4 flex flex-col md:flex-row gap-3">
+      <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm mb-4 flex flex-col md:flex-row gap-3 md:items-stretch">
         <form
           onSubmit={(e) => { e.preventDefault(); setAppliedSearch(search) }}
           className="relative flex-1"
@@ -135,13 +135,13 @@ export default function SuperadminOrders() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar por nome, telefone, loja, nº pedido..."
-            className="w-full pl-9 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white text-sm outline-none focus:ring-2 focus:ring-green-500"
+            className="w-full h-full pl-9 pr-3 py-3 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white text-sm outline-none focus:ring-2 focus:ring-green-500"
           />
         </form>
         <select
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
-          className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white text-sm outline-none"
+          className="px-3 py-3 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white text-sm outline-none"
         >
           <option value="">Todos os status</option>
           {Object.entries(statusLabels).map(([v, l]) => (
@@ -151,7 +151,7 @@ export default function SuperadminOrders() {
         <select
           value={filterAccount}
           onChange={(e) => setFilterAccount(e.target.value)}
-          className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white text-sm outline-none"
+          className="px-3 py-3 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white text-sm outline-none"
         >
           <option value="">Todas as lojas</option>
           {accountsList.map((a) => (
