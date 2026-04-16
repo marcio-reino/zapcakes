@@ -153,7 +153,7 @@ function StoreContent() {
       .catch(() => setNotFound(true))
   }, [slug])
 
-  // Título da aba e favicon personalizados da loja
+  // Título da aba e favicon personalizados da loja (com cantos arredondados)
   useEffect(() => {
     if (!store) return
 
@@ -163,17 +163,58 @@ function StoreContent() {
     let link = document.querySelector("link[rel~='icon']")
     const originalHref = link?.getAttribute('href') || null
     const originalType = link?.getAttribute('type') || null
+    let cancelled = false
+
+    async function buildRoundedFavicon(url) {
+      try {
+        const img = new Image()
+        img.crossOrigin = 'anonymous'
+        await new Promise((resolve, reject) => {
+          img.onload = resolve
+          img.onerror = reject
+          img.src = url
+        })
+        if (cancelled) return null
+        const size = 64
+        const radius = 14
+        const canvas = document.createElement('canvas')
+        canvas.width = size
+        canvas.height = size
+        const ctx = canvas.getContext('2d')
+        ctx.beginPath()
+        ctx.moveTo(radius, 0)
+        ctx.lineTo(size - radius, 0)
+        ctx.quadraticCurveTo(size, 0, size, radius)
+        ctx.lineTo(size, size - radius)
+        ctx.quadraticCurveTo(size, size, size - radius, size)
+        ctx.lineTo(radius, size)
+        ctx.quadraticCurveTo(0, size, 0, size - radius)
+        ctx.lineTo(0, radius)
+        ctx.quadraticCurveTo(0, 0, radius, 0)
+        ctx.closePath()
+        ctx.clip()
+        ctx.drawImage(img, 0, 0, size, size)
+        return canvas.toDataURL('image/png')
+      } catch {
+        return null
+      }
+    }
+
     if (store.logoUrl) {
       if (!link) {
         link = document.createElement('link')
         link.rel = 'icon'
         document.head.appendChild(link)
       }
-      link.type = 'image/x-icon'
-      link.href = store.logoUrl
+      buildRoundedFavicon(store.logoUrl).then((dataUrl) => {
+        if (cancelled) return
+        link.type = dataUrl ? 'image/png' : 'image/x-icon'
+        link.href = dataUrl || store.logoUrl
+      })
     }
 
     return () => {
+      cancelled = true
       document.title = originalTitle
       if (link && originalHref !== null) {
         link.setAttribute('href', originalHref)
