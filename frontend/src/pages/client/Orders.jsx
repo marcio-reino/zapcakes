@@ -245,6 +245,10 @@ export default function ClientOrders() {
     for (const item of (order.items || [])) {
       const name = `${item.quantity}x ${item.product?.name || 'Produto'}`
       estH += Math.ceil(name.length / 25) * 3.8 + 1.5
+      for (const a of item.additionals || []) {
+        const addLine = `+ ${a.description}${a.quantity > 1 ? ` (${a.quantity}x)` : ''}`
+        estH += Math.ceil(addLine.length / 28) * 3.2 + 0.8
+      }
     }
     estH += 1 + 5
     if (deliveryFee > 0) estH += 4.5
@@ -364,12 +368,22 @@ export default function ClientOrders() {
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(8.5)
     for (const item of (order.items || [])) {
+      const addonTotal = (item.additionals || []).reduce((s, a) => s + Number(a.price) * (a.quantity || 1), 0)
       const name = `${item.quantity}x ${item.product?.name || 'Produto'}`
-      const val = BRL(Number(item.price) * item.quantity)
+      const val = BRL((Number(item.price) + addonTotal) * item.quantity)
       const nameLines = doc.splitTextToSize(name, pw - 25)
       doc.text(nameLines, mx, y)
       textRight(val, y)
       y += nameLines.length * 3.8 + 1.5
+      for (const a of item.additionals || []) {
+        doc.setFontSize(7.5)
+        const addLabel = `+ ${a.description}${a.quantity > 1 ? ` (${a.quantity}x)` : ''}`
+        const addLines = doc.splitTextToSize(addLabel, pw - 20)
+        doc.text(addLines, mx + 3, y)
+        textRight(BRL(Number(a.price) * (a.quantity || 1)), y)
+        y += addLines.length * 3.2 + 0.8
+        doc.setFontSize(8.5)
+      }
     }
 
     y += 1
@@ -570,12 +584,22 @@ export default function ClientOrders() {
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(11)
     for (const item of (order.items || [])) {
+      const addonTotal = (item.additionals || []).reduce((s, a) => s + Number(a.price) * (a.quantity || 1), 0)
       const name = `${item.quantity}x ${item.product?.name || 'Produto'}`
-      const val = BRL(Number(item.price) * item.quantity)
+      const val = BRL((Number(item.price) + addonTotal) * item.quantity)
       const nameLines = doc.splitTextToSize(name, pw - 40)
       doc.text(nameLines, mx, y)
       textRight(val, y)
       y += nameLines.length * 6 + 3
+      for (const a of item.additionals || []) {
+        doc.setFontSize(9.5)
+        const addLabel = `+ ${a.description}${a.quantity > 1 ? ` (${a.quantity}x)` : ''}`
+        const addLines = doc.splitTextToSize(addLabel, pw - 30)
+        doc.text(addLines, mx + 4, y)
+        textRight(BRL(Number(a.price) * (a.quantity || 1)), y)
+        y += addLines.length * 5 + 1.5
+        doc.setFontSize(11)
+      }
     }
 
     y += 3
@@ -885,12 +909,25 @@ export default function ClientOrders() {
 
               {expandedOrders.has(order.id) && <>
               <div className="border-t dark:border-gray-700 pt-3 mb-3 mt-3">
-                {order.items?.map((item) => (
+                {order.items?.map((item) => {
+                  const addonTotal = (item.additionals || []).reduce((s, a) => s + Number(a.price) * (a.quantity || 1), 0)
+                  const lineTotal = (Number(item.price) + addonTotal) * item.quantity
+                  return (
                   <div key={item.id} className="py-1">
                     <div className="flex justify-between text-base md:text-sm dark:text-gray-300">
                       <span>{item.quantity}x {item.product?.name}</span>
-                      <span>{BRL(Number(item.price) * item.quantity)}</span>
+                      <span>{BRL(lineTotal)}</span>
                     </div>
+                    {item.additionals?.length > 0 && (
+                      <div className="mt-1 pl-3 border-l-2 border-green-200 dark:border-green-800 space-y-0.5">
+                        {item.additionals.map((a) => (
+                          <div key={a.id} className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
+                            <span>+ {a.description}{a.quantity > 1 ? ` (${a.quantity}x)` : ''}</span>
+                            <span className="text-green-600 dark:text-green-400">{BRL(Number(a.price) * (a.quantity || 1))}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     {item.attachments?.length > 0 && (
                       <div className="mt-2">
                         <div className="flex items-center gap-1.5 mb-1.5">
@@ -906,7 +943,8 @@ export default function ClientOrders() {
                       </div>
                     )}
                   </div>
-                ))}
+                  )
+                })}
               </div>
 
               {/* Observações do cliente */}
