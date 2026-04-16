@@ -1849,15 +1849,17 @@ export class OpenAiService {
       ...history,
     ]
 
-    let reply = await this.processWithTools(messages, userId, remoteJid, instanceName)
+    const rawReply = await this.processWithTools(messages, userId, remoteJid, instanceName)
 
-    const { reply: processedReply, handled } = await this.processCommands(reply, userId, instanceName, remoteJid)
-    reply = processedReply
+    const { reply: processedReply, handled } = await this.processCommands(rawReply, userId, instanceName, remoteJid)
 
-    await this.addMessage(remoteJid, 'assistant', reply)
+    // Persiste no historico a RESPOSTA ORIGINAL do modelo (com os markers).
+    // Salvar o placeholder '[Imagens dos produtos de X enviadas...]' fazia
+    // o modelo copiar esse texto no proximo turno em vez de emitir o marker.
+    await this.addMessage(remoteJid, 'assistant', rawReply)
     this.clearExpired()
 
-    return handled ? null : reply
+    return handled ? null : processedReply
   }
 
   // Processa mensagem com imagem (multimodal)
@@ -1882,14 +1884,14 @@ export class OpenAiService {
       ...history,
     ]
 
-    let reply = await this.processWithTools(messages, userId, remoteJid, instanceName)
+    const rawReply = await this.processWithTools(messages, userId, remoteJid, instanceName)
 
-    const { reply: processedReply, handled } = await this.processCommands(reply, userId, instanceName, remoteJid)
-    reply = processedReply
+    const { reply: processedReply, handled } = await this.processCommands(rawReply, userId, instanceName, remoteJid)
 
-    await this.addMessage(remoteJid, 'assistant', reply)
+    // Persiste a resposta original do modelo (com markers), nao o placeholder.
+    await this.addMessage(remoteJid, 'assistant', rawReply)
     this.clearExpired()
 
-    return handled ? null : reply
+    return handled ? null : processedReply
   }
 }
