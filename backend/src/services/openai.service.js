@@ -12,9 +12,13 @@ function normalizePhone(p) {
   return digits.startsWith('55') && digits.length > 11 ? digits.slice(2) : digits
 }
 
-// Cache de conversas em memória (remoteJid -> messages[])
-const conversationCache = new Map()
-const CONVERSATION_TTL = 30 * 60 * 1000 // 30 minutos
+// Cache de conversas — Redis (prioritario) + Map em memoria como fallback
+import redisClient, { isRedisReady } from '../config/redis.js'
+const conversationCache = new Map() // fallback
+const CONVERSATION_TTL = 30 * 60 * 1000 // 30 minutos (ms)
+const CONVERSATION_TTL_SEC = 30 * 60 // 30 minutos (s) para Redis EXPIRE
+const REDIS_KEY = (jid) => `zapcakes:conv:${jid}`
+const MAX_MESSAGES = 50
 
 // Cache temporário da última imagem recebida por jid (para comprovantes)
 const lastImageCache = new Map()
@@ -1648,12 +1652,26 @@ export class OpenAiService {
   }
 
   // Limpa o histórico de uma conversa específica (usado pelo simulador)
-  resetConversation(remoteJid) {
+  async resetConversation(remoteJid) {
     conversationCache.delete(remoteJid)
+    if (isRedisReady()) {
+      try { await redisClient.del(REDIS_KEY(remoteJid)) } catch { /* fallback silencioso */ }
+    }
   }
 
-  // Obtém ou cria contexto de conversa
-  getConversation(remoteJid) {
+  // Obtém contexto de conversa (array de messages). Redis primeiro, fallback Map.
+  async getConversation(remoteJid) {
+    if (isRedisReady()) {
+      try {
+        const raw = await redisClient.get(REDIS_KEY(remoteJid))
+        if (raw) {
+          // Renova TTL ao ler (atividade recente)
+          await redisClient.expire(REDIS_KEY(remoteJid), CONVERSATION_TTL_SEC)
+          return JSON.parse(raw)
+        }
+        return []
+      } catch { /* cai para fallback */ }
+    }
     const existing = conversationCache.get(remoteJid)
     if (existing && Date.now() - existing.lastActivity < CONVERSATION_TTL) {
       existing.lastActivity = Date.now()
@@ -1663,31 +1681,37 @@ export class OpenAiService {
     return []
   }
 
-  // Adiciona mensagem ao contexto
-  addMessage(remoteJid, role, content) {
-    const conv = this.getConversation(remoteJid)
-    conv.push({ role, content })
-    // Mantém no máximo 50 mensagens de contexto (aumentado para suportar tool calls)
-    if (conv.length > 50) {
-      conv.splice(0, conv.length - 50)
+  // Persiste o array de mensagens (trunca em MAX_MESSAGES)
+  async _saveConversation(remoteJid, messages) {
+    const trimmed = messages.length > MAX_MESSAGES ? messages.slice(-MAX_MESSAGES) : messages
+    if (isRedisReady()) {
+      try {
+        await redisClient.set(REDIS_KEY(remoteJid), JSON.stringify(trimmed), 'EX', CONVERSATION_TTL_SEC)
+        return
+      } catch { /* fallback */ }
     }
-    conversationCache.set(remoteJid, { messages: conv, lastActivity: Date.now() })
+    conversationCache.set(remoteJid, { messages: trimmed, lastActivity: Date.now() })
+  }
+
+  // Adiciona mensagem ao contexto
+  async addMessage(remoteJid, role, content) {
+    const conv = await this.getConversation(remoteJid)
+    conv.push({ role, content })
+    await this._saveConversation(remoteJid, conv)
   }
 
   // Adiciona mensagem de tool call ao contexto
-  addToolMessages(remoteJid, assistantMessage, toolResults) {
-    const conv = this.getConversation(remoteJid)
+  async addToolMessages(remoteJid, assistantMessage, toolResults) {
+    const conv = await this.getConversation(remoteJid)
     conv.push(assistantMessage)
     for (const result of toolResults) {
       conv.push(result)
     }
-    if (conv.length > 50) {
-      conv.splice(0, conv.length - 50)
-    }
-    conversationCache.set(remoteJid, { messages: conv, lastActivity: Date.now() })
+    await this._saveConversation(remoteJid, conv)
   }
 
-  // Limpa conversa expirada
+  // Limpa conversas expiradas do fallback em memoria
+  // (Redis expira automaticamente via TTL, nao precisa)
   clearExpired() {
     const now = Date.now()
     for (const [jid, data] of conversationCache) {
@@ -1741,7 +1765,7 @@ export class OpenAiService {
       }
 
       // Adiciona ao contexto da conversa
-      this.addToolMessages(remoteJid, assistantMessage, toolResults)
+      await this.addToolMessages(remoteJid, assistantMessage, toolResults)
 
       // Atualiza messages para a próxima iteração
       messages.push(assistantMessage)
@@ -1813,11 +1837,12 @@ export class OpenAiService {
     this._currentInstanceName = instanceName
     const systemPrompt = await this.buildSystemPrompt(userId)
 
-    this.addMessage(remoteJid, 'user', userMessage)
+    await this.addMessage(remoteJid, 'user', userMessage)
 
+    const history = await this.getConversation(remoteJid)
     const messages = [
       { role: 'system', content: systemPrompt },
-      ...this.getConversation(remoteJid),
+      ...history,
     ]
 
     let reply = await this.processWithTools(messages, userId, remoteJid, instanceName)
@@ -1825,7 +1850,7 @@ export class OpenAiService {
     const { reply: processedReply, handled } = await this.processCommands(reply, userId, instanceName, remoteJid)
     reply = processedReply
 
-    this.addMessage(remoteJid, 'assistant', reply)
+    await this.addMessage(remoteJid, 'assistant', reply)
     this.clearExpired()
 
     return handled ? null : reply
@@ -1845,11 +1870,12 @@ export class OpenAiService {
     }
     content.push({ type: 'image_url', image_url: { url: imageUrl } })
 
-    this.addMessage(remoteJid, 'user', content)
+    await this.addMessage(remoteJid, 'user', content)
 
+    const history = await this.getConversation(remoteJid)
     const messages = [
       { role: 'system', content: systemPrompt },
-      ...this.getConversation(remoteJid),
+      ...history,
     ]
 
     let reply = await this.processWithTools(messages, userId, remoteJid, instanceName)
@@ -1857,7 +1883,7 @@ export class OpenAiService {
     const { reply: processedReply, handled } = await this.processCommands(reply, userId, instanceName, remoteJid)
     reply = processedReply
 
-    this.addMessage(remoteJid, 'assistant', reply)
+    await this.addMessage(remoteJid, 'assistant', reply)
     this.clearExpired()
 
     return handled ? null : reply

@@ -17,6 +17,7 @@ services:
     networks:
       - traefik_network
       - mysql_network
+      - redis_network
 
 networks:
   traefik_network:
@@ -24,3 +25,6 @@ networks:
   mysql_network:
     external: true
     name: zapcakes-mysql_default
+  redis_network:
+    external: true
+    name: zapcakes-redis_default

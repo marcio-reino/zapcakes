@@ -1221,16 +1221,17 @@ export class SuperadminController {
       openAiService._currentInstanceName = null
 
       const systemPrompt = await openAiService.buildSystemPrompt(Number(userId))
-      openAiService.addMessage(remoteJid, 'user', String(message))
+      await openAiService.addMessage(remoteJid, 'user', String(message))
+      const history = await openAiService.getConversation(remoteJid)
       const msgs = [
         { role: 'system', content: systemPrompt },
-        ...openAiService.getConversation(remoteJid),
+        ...history,
       ]
       let raw = await openAiService.processWithTools(msgs, Number(userId), remoteJid, null)
 
       // Expande markers do agente em listas legiveis para o simulador
       const expanded = await expandSimulatorMarkers(raw, Number(userId))
-      openAiService.addMessage(remoteJid, 'assistant', raw)
+      await openAiService.addMessage(remoteJid, 'assistant', raw)
 
       return { reply: expanded, remoteJid }
     } catch (err) {
@@ -1245,7 +1246,7 @@ export class SuperadminController {
       return reply.status(400).send({ error: 'userId e sessionId sao obrigatorios' })
     }
     const remoteJid = `sim${String(sessionId).replace(/[^\w-]/g, '').slice(0, 40)}@s.whatsapp.net`
-    openAiService.resetConversation(remoteJid)
+    await openAiService.resetConversation(remoteJid)
     return { ok: true }
   }
 }
