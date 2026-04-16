@@ -755,9 +755,7 @@ export class OpenAiService {
             }
           }
 
-          const total = itemsTotal + deliveryFee
-
-          // Reserva condicional - prioriza config da conta, fallback instruções
+          // Busca config de reserva (sera aplicada apos somar itensTotal)
           const accountRes = await prisma.account.findUnique({
             where: { userId },
             select: { useReservation: true, reservationPercent: true },
@@ -766,7 +764,6 @@ export class OpenAiService {
           const resPercent = hasRes
             ? (accountRes?.reservationPercent || this._extractReservationPercent(orderInstructions) || 30)
             : null
-          const reservation = resPercent ? Math.round(itemsTotal * (resPercent / 100) * 100) / 100 : null
 
           // Busca IDs dos produtos pelo nome e valida min/max
           const orderItems = []
@@ -828,6 +825,10 @@ export class OpenAiService {
               })
             }
           }
+
+          // Agora que itemsTotal esta calculado, finaliza total e reserva
+          const total = itemsTotal + deliveryFee
+          const reservation = resPercent ? Math.round(itemsTotal * (resPercent / 100) * 100) / 100 : null
 
           // Valida limites por categoria na agenda (se configurada)
           if (args.estimatedDeliveryDate) {
