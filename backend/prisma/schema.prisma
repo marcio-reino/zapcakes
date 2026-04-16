@@ -335,6 +335,7 @@ model ComboItem {
 // Pedidos
 model Order {
   id              Int         @id @default(autoincrement())
+  publicId        String?     @unique @map("public_id") @db.VarChar(36)
   orderNumber     Int         @map("order_number")
   userId          Int         @map("user_id")
   customerId      Int?        @map("customer_id")

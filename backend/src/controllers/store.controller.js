@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs'
+import { randomUUID } from 'node:crypto'
 import prisma from '../config/database.js'
 import { UploadService } from '../services/upload.service.js'
 import { AccountService } from '../services/account.service.js'
@@ -463,6 +464,7 @@ export class StoreController {
     const order = await prisma.order.create({
       data: {
         userId,
+        publicId: randomUUID(),
         orderNumber: nextOrderNumber,
         customerId,
         customerName: customer.name,

@@ -371,7 +371,7 @@ export default function StoreCart() {
       confetti({ particleCount: 100, spread: 80, origin: { y: 0.6 }, colors })
 
       toast.success('Pedido realizado com sucesso!')
-      setTimeout(() => navigate(`/loja/${slug}/pedido/${data.id}`), 1800)
+      setTimeout(() => navigate(`/loja/${slug}/pedido/${data.publicId || data.id}`), 1800)
     } catch (err) {
       toast.error(err.response?.data?.error || 'Erro ao criar pedido')
     } finally {

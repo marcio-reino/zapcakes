@@ -1,4 +1,5 @@
 import prisma from '../config/database.js'
+import { randomUUID } from 'node:crypto'
 import evolutionApi from '../config/evolution.js'
 import { resolveItemAdditionals } from '../services/order.service.js'
 
@@ -66,6 +67,7 @@ export class OrderController {
     const order = await prisma.order.create({
       data: {
         userId: request.user.id,
+        publicId: randomUUID(),
         orderNumber: nextOrderNumber,
         customerName,
         customerPhone,

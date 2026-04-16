@@ -1,6 +1,7 @@
 import openai from '../config/openai.js'
 import prisma from '../config/database.js'
 import evolutionApi from '../config/evolution.js'
+import { randomUUID } from 'node:crypto'
 import { PutObjectCommand } from '@aws-sdk/client-s3'
 import s3Client, { S3_BUCKET } from '../config/s3.js'
 import { randomUUID } from 'crypto'
@@ -812,6 +813,7 @@ export class OpenAiService {
           const order = await prisma.order.create({
             data: {
               userId,
+              publicId: randomUUID(),
               orderNumber: nextOrderNumber,
               customerId: args.customerId,
               customerName: args.customerName,

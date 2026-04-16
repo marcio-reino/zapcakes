@@ -20,7 +20,8 @@ export default function StoreOrderConfirmation() {
   useEffect(() => {
     storeApi.get(`/store/${slug}/customer/orders`)
       .then(({ data }) => {
-        const found = data.find(o => o.id === Number(orderId))
+        // Aceita publicId (UUID) ou id numérico (compatibilidade com pedidos antigos)
+        const found = data.find(o => o.publicId === orderId) || data.find(o => o.id === Number(orderId))
         if (found) setOrder(found)
       })
       .catch(() => {})
