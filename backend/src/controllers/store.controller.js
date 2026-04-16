@@ -4,6 +4,7 @@ import { UploadService } from '../services/upload.service.js'
 import { AccountService } from '../services/account.service.js'
 import openai from '../config/openai.js'
 import evolutionApi from '../config/evolution.js'
+import { resolveItemAdditionals, persistOrderItemAdditionals } from '../services/order.service.js'
 
 // Armazena códigos de recuperação: { `${userId}_${phone}`: { customerId, code, expiresAt } }
 const resetCodes = new Map()
@@ -93,11 +94,23 @@ export class StoreController {
         imageUrl: true, minOrder: true, categoryId: true,
         allowInspirationImages: true, inspirationInstruction: true, maxInspirationImages: true,
         category: { select: { id: true, name: true } },
+        productAdditionals: {
+          where: { additional: { active: true } },
+          select: {
+            sortOrder: true,
+            additional: { select: { id: true, description: true, imageUrl: true, price: true } },
+          },
+          orderBy: { sortOrder: 'asc' },
+        },
       },
       orderBy: { name: 'asc' },
     })
 
-    return products
+    return products.map((p) => {
+      const additionals = (p.productAdditionals || []).map((pa) => pa.additional)
+      const { productAdditionals, ...rest } = p
+      return { ...rest, additionals }
+    })
   }
 
   // GET /api/store/:slug/delivery-zones — taxas de entrega públicas
@@ -345,6 +358,7 @@ export class StoreController {
     const orderItems = []
     let total = 0
 
+    let itemAddons = []
     if (items?.length) {
       const productIds = items.map(i => i.productId)
       const products = await prisma.product.findMany({
@@ -355,15 +369,24 @@ export class StoreController {
         return reply.status(400).send({ error: 'Um ou mais produtos não encontrados' })
       }
 
-      for (const item of items) {
+      try {
+        itemAddons = await resolveItemAdditionals(userId, items)
+      } catch (err) {
+        return reply.status(err.statusCode || 500).send({ error: err.message })
+      }
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i]
         const product = products.find(p => p.id === item.productId)
+        const addonTotal = itemAddons[i]?._addonTotal || 0
         orderItems.push({
           productId: item.productId,
           quantity: item.quantity,
           price: product.price,
           _attachments: item.attachments || [],
+          _addons: itemAddons[i]?._addons || [],
         })
-        total += Number(product.price) * item.quantity
+        total += (Number(product.price) + addonTotal) * item.quantity
       }
     }
 
@@ -452,7 +475,7 @@ export class StoreController {
         deliveryFee: deliveryFee ? Number(deliveryFee) : null,
         ...(reservationValue !== null ? { reservation: reservationValue, depositAmount: reservationValue } : {}),
         items: {
-          create: orderItems.map(({ _attachments, ...item }) => item),
+          create: orderItems.map(({ _attachments, _addons, ...item }) => item),
         },
       },
       include: { items: { include: { product: true } } },
@@ -472,10 +495,28 @@ export class StoreController {
       }
     }
 
-    // Recarregar com attachments
+    // Criar adicionais por item (snapshot de preço/descrição)
+    const addonPayload = []
+    for (const orderItem of order.items) {
+      const original = orderItems.find(oi => oi.productId === orderItem.productId)
+      for (const a of original?._addons || []) {
+        addonPayload.push({
+          orderItemId: orderItem.id,
+          additionalId: a.additionalId,
+          description: a.description,
+          price: a.price,
+          quantity: a.quantity,
+        })
+      }
+    }
+    if (addonPayload.length > 0) {
+      await prisma.orderItemAdditional.createMany({ data: addonPayload })
+    }
+
+    // Recarregar com attachments e adicionais
     const fullOrder = await prisma.order.findUnique({
       where: { id: order.id },
-      include: { items: { include: { product: true, attachments: true } } },
+      include: { items: { include: { product: true, attachments: true, additionals: true } } },
     })
 
     // Incrementar contador da agenda
@@ -496,7 +537,7 @@ export class StoreController {
     const orders = await prisma.order.findMany({
       where: { customerId, userId },
       include: {
-        items: { include: { product: { select: { id: true, name: true, imageUrl: true } }, attachments: true } },
+        items: { include: { product: { select: { id: true, name: true, imageUrl: true } }, attachments: true, additionals: true } },
       },
       orderBy: { createdAt: 'desc' },
       take: 50,

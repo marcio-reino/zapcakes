@@ -118,6 +118,18 @@ const agentTools = [
                 productName: { type: 'string', description: 'Nome do produto (exato do catálogo)' },
                 quantity: { type: 'number', description: 'Quantidade' },
                 price: { type: 'number', description: 'Preço unitário do produto' },
+                additionals: {
+                  type: 'array',
+                  description: 'Adicionais escolhidos pelo cliente para este item (opcional)',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      additionalName: { type: 'string', description: 'Nome do adicional (exato do catálogo)' },
+                      quantity: { type: 'number', description: 'Quantidade do adicional (padrão 1)' },
+                    },
+                    required: ['additionalName'],
+                  },
+                },
               },
               required: ['productName', 'quantity', 'price'],
             },
@@ -209,6 +221,26 @@ export class OpenAiService {
     catalog += 'Após enviar as imagens, pergunte qual produto o cliente deseja e a quantidade.\n\n'
 
     catalog += 'Lista completa de categorias e produtos (para referência de preços):\n\n'
+
+    // Carrega adicionais vinculados a cada produto, em 1 query
+    const productIds = categories.flatMap((c) => c.products.map((p) => p.id))
+    const productAdditionals = productIds.length > 0
+      ? await prisma.productAdditional.findMany({
+          where: {
+            productId: { in: productIds },
+            additional: { active: true },
+          },
+          include: { additional: true },
+          orderBy: { sortOrder: 'asc' },
+        })
+      : []
+    const addonsByProduct = productAdditionals.reduce((acc, pa) => {
+      const arr = acc[pa.productId] || []
+      arr.push(pa.additional)
+      acc[pa.productId] = arr
+      return acc
+    }, {})
+
     categories.forEach((cat) => {
       catalog += `### ${cat.name}\n`
       cat.products.forEach((prod, j) => {
@@ -223,6 +255,15 @@ export class OpenAiService {
           catalog += `]`
         }
         catalog += '\n'
+
+        const addons = addonsByProduct[prod.id] || []
+        if (addons.length > 0) {
+          catalog += `   Adicionais disponíveis:\n`
+          addons.forEach((a) => {
+            const ap = Number(a.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+            catalog += `   • ${a.description} - ${ap}\n`
+          })
+        }
       })
       catalog += '\n'
     })
@@ -641,7 +682,8 @@ export class OpenAiService {
             }
           }
 
-          const itemsTotal = args.items.reduce((sum, item) => sum + item.quantity * item.price, 0)
+          // itemsTotal será calculado após resolver adicionais abaixo
+          let itemsTotal = 0
 
           // Busca instruções de pedidos para reserva e taxa de entrega
           const orderInstructions = await prisma.agentInstruction.findMany({
@@ -695,10 +737,44 @@ export class OpenAiService {
               if (product.maxOrder && item.quantity > product.maxOrder) {
                 return JSON.stringify({ success: false, error: `O produto "${product.name}" tem pedido máximo de ${product.maxOrder} unidades. O cliente pediu ${item.quantity}. Peça ao cliente para ajustar a quantidade.` })
               }
+
+              // Resolve adicionais por nome (restritos aos vinculados a este produto)
+              const resolvedAddons = []
+              let addonUnitTotal = 0
+              if (Array.isArray(item.additionals) && item.additionals.length > 0) {
+                const productAddons = await prisma.productAdditional.findMany({
+                  where: { productId: product.id, additional: { active: true } },
+                  include: { additional: true },
+                })
+                if (productAddons.length === 0) {
+                  return JSON.stringify({ success: false, error: `O produto "${product.name}" não possui adicionais disponíveis.` })
+                }
+                for (const a of item.additionals) {
+                  const requestedName = String(a.additionalName || '').toLowerCase().trim()
+                  const match = productAddons.find((pa) => pa.additional.description.toLowerCase().includes(requestedName) || requestedName.includes(pa.additional.description.toLowerCase()))
+                  if (!match) {
+                    const options = productAddons.map((pa) => pa.additional.description).join(', ')
+                    return JSON.stringify({ success: false, error: `Adicional "${a.additionalName}" não está disponível para "${product.name}". Opções: ${options}.` })
+                  }
+                  const qty = Math.max(1, Number(a.quantity) || 1)
+                  resolvedAddons.push({
+                    additionalId: match.additional.id,
+                    description: match.additional.description,
+                    price: match.additional.price,
+                    quantity: qty,
+                  })
+                  addonUnitTotal += Number(match.additional.price) * qty
+                }
+              }
+
+              const lineTotal = (Number(item.price) + addonUnitTotal) * item.quantity
+              itemsTotal += lineTotal
+
               orderItems.push({
                 productId: product.id,
                 quantity: item.quantity,
                 price: item.price,
+                _addons: resolvedAddons,
               })
             }
           }
@@ -750,11 +826,29 @@ export class OpenAiService {
               reservation,
               status: 'PENDING',
               items: {
-                create: orderItems,
+                create: orderItems.map(({ _addons, ...it }) => it),
               },
             },
             include: { items: { include: { product: true } } },
           })
+
+          // Persistir adicionais por item (snapshot de preço/descrição)
+          const addonPayload = []
+          for (const oi of order.items) {
+            const original = orderItems.find((x) => x.productId === oi.productId)
+            for (const a of original?._addons || []) {
+              addonPayload.push({
+                orderItemId: oi.id,
+                additionalId: a.additionalId,
+                description: a.description,
+                price: a.price,
+                quantity: a.quantity,
+              })
+            }
+          }
+          if (addonPayload.length > 0) {
+            await prisma.orderItemAdditional.createMany({ data: addonPayload })
+          }
 
           // Incrementa contador na agenda se a data prevista existe
           if (args.estimatedDeliveryDate) {
@@ -1188,6 +1282,7 @@ export class OpenAiService {
     prompt += `3. Após as imagens serem enviadas, pergunte qual produto deseja e a quantidade\n`
     prompt += `4. Quando o cliente escolher um produto e quantidade, CONFIRME o item adicionado (ex: "Adicionei 2x Bolo de Chocolate - R$ 120,00")\n`
     prompt += `   - Se o produto tiver a marcação "📷 Aceita imagens de inspiração" no catálogo, pergunte ao cliente: "Você gostaria de enviar imagens de inspiração/referência para esse produto? (fotos do tema, decoração, etc)". Se o cliente quiser enviar, peça as imagens (respeitando o máximo indicado no catálogo). Se não quiser, siga normalmente.\n`
+    prompt += `   - Se o produto listar uma seção "Adicionais disponíveis" logo abaixo dele no catálogo, PERGUNTE ao cliente se deseja incluir algum adicional, listando o nome e o preço de cada um. Se o cliente aceitar, registre os adicionais escolhidos no item (em "additionals" de criar_pedido, usando o nome exato do adicional). Se recusar ou o produto não tiver adicionais, siga normalmente.\n`
     prompt += `   - Depois pergunte se deseja mais algum produto\n`
     prompt += `5. O cliente pode adicionar mais produtos ao pedido. Mantenha a lista mental de TODOS os itens pedidos com nome, quantidade e preço unitário\n`
     prompt += `6. Quando o cliente quiser finalizar o pedido, ANTES de confirmar, siga este fluxo obrigatório:\n\n`

@@ -10,6 +10,7 @@ import { instanceRoutes } from './routes/instance.routes.js'
 import { chatbotRoutes } from './routes/chatbot.routes.js'
 import { productRoutes } from './routes/product.routes.js'
 import { categoryRoutes } from './routes/category.routes.js'
+import { additionalRoutes } from './routes/additional.routes.js'
 import { orderRoutes } from './routes/order.routes.js'
 import { webhookRoutes } from './routes/webhook.routes.js'
 import { comboRoutes } from './routes/combo.routes.js'
@@ -70,6 +71,7 @@ await app.register(instanceRoutes, { prefix: '/api/instances' })
 await app.register(chatbotRoutes, { prefix: '/api/chatbots' })
 await app.register(productRoutes, { prefix: '/api/products' })
 await app.register(categoryRoutes, { prefix: '/api/categories' })
+await app.register(additionalRoutes, { prefix: '/api/additionals' })
 await app.register(orderRoutes, { prefix: '/api/orders' })
 await app.register(comboRoutes, { prefix: '/api/combos' })
 await app.register(webhookRoutes, { prefix: '/api/webhooks' })

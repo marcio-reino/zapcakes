@@ -1,5 +1,6 @@
 import prisma from '../config/database.js'
 import evolutionApi from '../config/evolution.js'
+import { resolveItemAdditionals } from '../services/order.service.js'
 
 const padNum = (n) => String(n).padStart(5, '0')
 
@@ -12,7 +13,7 @@ export class OrderController {
     const orders = await prisma.order.findMany({
       where,
       include: {
-        items: { include: { product: true, attachments: true } },
+        items: { include: { product: true, attachments: true, additionals: true } },
         customer: { select: { id: true, name: true, phone: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -32,16 +33,28 @@ export class OrderController {
       return reply.status(400).send({ error: 'Um ou mais produtos não encontrados' })
     }
 
-    const orderItems = items.map((item) => {
+    let itemAddons = []
+    try {
+      itemAddons = await resolveItemAdditionals(request.user.id, items)
+    } catch (err) {
+      return reply.status(err.statusCode || 500).send({ error: err.message })
+    }
+
+    const orderItems = items.map((item, idx) => {
       const product = products.find((p) => p.id === item.productId)
       return {
         productId: item.productId,
         quantity: item.quantity,
         price: product.price,
+        _addons: itemAddons[idx]?._addons || [],
+        _addonTotal: itemAddons[idx]?._addonTotal || 0,
       }
     })
 
-    const total = orderItems.reduce((sum, item) => sum + Number(item.price) * item.quantity, 0)
+    const total = orderItems.reduce(
+      (sum, item) => sum + (Number(item.price) + item._addonTotal) * item.quantity,
+      0,
+    )
 
     const lastOrder = await prisma.order.findFirst({
       where: { userId: request.user.id },
@@ -59,12 +72,34 @@ export class OrderController {
         deliveryAddress,
         notes,
         total,
-        items: { create: orderItems },
+        items: { create: orderItems.map(({ _addons, _addonTotal, ...item }) => item) },
       },
-      include: { items: { include: { product: true, attachments: true } } },
+      include: { items: { include: { product: true } } },
     })
 
-    return reply.status(201).send(order)
+    // Persistir adicionais com snapshot
+    const addonPayload = []
+    for (const orderItem of order.items) {
+      const original = orderItems.find((oi) => oi.productId === orderItem.productId)
+      for (const a of original?._addons || []) {
+        addonPayload.push({
+          orderItemId: orderItem.id,
+          additionalId: a.additionalId,
+          description: a.description,
+          price: a.price,
+          quantity: a.quantity,
+        })
+      }
+    }
+    if (addonPayload.length > 0) {
+      await prisma.orderItemAdditional.createMany({ data: addonPayload })
+    }
+
+    const fullOrder = await prisma.order.findUnique({
+      where: { id: order.id },
+      include: { items: { include: { product: true, attachments: true, additionals: true } } },
+    })
+    return reply.status(201).send(fullOrder)
   }
 
   async getById(request, reply) {
@@ -72,7 +107,7 @@ export class OrderController {
     const order = await prisma.order.findFirst({
       where: { id: Number(id), userId: request.user.id },
       include: {
-        items: { include: { product: true, attachments: true } },
+        items: { include: { product: true, attachments: true, additionals: true } },
         customer: { select: { id: true, name: true, phone: true } },
       },
     })
@@ -175,7 +210,7 @@ export class OrderController {
     const updated = await prisma.order.update({
       where: { id: Number(id) },
       data: updateData,
-      include: { items: { include: { product: true, attachments: true } } },
+      include: { items: { include: { product: true, attachments: true, additionals: true } } },
     })
 
     // Envia mensagem de confirmação via WhatsApp se tiver remoteJid
@@ -203,7 +238,7 @@ export class OrderController {
     const updated = await prisma.order.update({
       where: { id: Number(id) },
       data: { paymentConfirmed: true, status: 'CONFIRMED' },
-      include: { items: { include: { product: true, attachments: true } } },
+      include: { items: { include: { product: true, attachments: true, additionals: true } } },
     })
 
     if (order.remoteJid) {
@@ -252,7 +287,7 @@ export class OrderController {
     const updated = await prisma.order.update({
       where: { id: Number(id) },
       data: { status: 'CANCELLED' },
-      include: { items: { include: { product: true, attachments: true } } },
+      include: { items: { include: { product: true, attachments: true, additionals: true } } },
     })
 
     // Decrementa contador na agenda se o pedido tinha data prevista

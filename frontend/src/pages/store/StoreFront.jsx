@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { FiPlus, FiMinus, FiSearch, FiX } from 'react-icons/fi'
+import { FiPlus, FiMinus, FiSearch, FiX, FiPackage } from 'react-icons/fi'
 import storeApi from '../../services/storeApi.js'
 import { useCart } from '../../hooks/useCart.jsx'
 import toast from 'react-hot-toast'
@@ -11,11 +11,28 @@ function fmtBRL(value) {
 
 // Modal de detalhes do produto
 function ProductModal({ product, onClose }) {
-  const { addItem, items, updateQuantity, removeItem } = useCart()
+  const { addItem, items, updateQuantity, updateAdditionals } = useCart()
   const inCart = items.find(i => i.product.id === product.id)
   const [qty, setQty] = useState(inCart ? inCart.quantity : product.minOrder || 1)
   const [obs, setObs] = useState('')
   const [closing, setClosing] = useState(false)
+  const [selectedAddons, setSelectedAddons] = useState(
+    Array.isArray(inCart?.additionals) ? inCart.additionals : []
+  )
+
+  const availableAdditionals = Array.isArray(product.additionals) ? product.additionals : []
+  const addonSum = selectedAddons.reduce((s, a) => s + Number(a.price) * (a.quantity || 1), 0)
+  const unitTotal = Number(product.price) + addonSum
+
+  function toggleAddon(additional, checked) {
+    setSelectedAddons((prev) => {
+      if (checked) {
+        if (prev.some((a) => a.id === additional.id)) return prev
+        return [...prev, { id: additional.id, description: additional.description, price: additional.price, quantity: 1 }]
+      }
+      return prev.filter((a) => a.id !== additional.id)
+    })
+  }
 
   function handleClose() {
     setClosing(true)
@@ -25,8 +42,9 @@ function ProductModal({ product, onClose }) {
   function handleAdd() {
     if (inCart) {
       updateQuantity(product.id, qty)
+      updateAdditionals(product.id, selectedAddons)
     } else {
-      addItem({ ...product, obs: obs || undefined }, qty)
+      addItem({ ...product, obs: obs || undefined }, qty, selectedAddons.length > 0 ? selectedAddons : null)
     }
     toast.success('Adicionado!', { duration: 1500, icon: '🛒' })
     handleClose()
@@ -100,6 +118,42 @@ function ProductModal({ product, onClose }) {
             />
             <p className="text-xs text-gray-400 text-right mt-1">{obs.length} / 140</p>
           </div>
+
+          {/* Adicionais opcionais */}
+          {availableAdditionals.length > 0 && (
+            <div className="mt-5">
+              <label className="block text-sm font-medium text-gray-600 mb-2">Adicionais opcionais</label>
+              <div className="space-y-1.5">
+                {availableAdditionals.map((a) => {
+                  const checked = selectedAddons.some((s) => s.id === a.id)
+                  return (
+                    <label
+                      key={a.id}
+                      className={`flex items-center gap-3 p-2 rounded-xl border cursor-pointer transition-colors ${
+                        checked ? 'bg-green-50 border-green-300' : 'bg-white border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => toggleAddon(a, e.target.checked)}
+                        className="w-4 h-4 text-green-600 rounded"
+                      />
+                      {a.imageUrl ? (
+                        <img src={a.imageUrl} alt={a.description} className="w-10 h-10 rounded object-cover" />
+                      ) : (
+                        <div className="w-10 h-10 rounded bg-gray-100 flex items-center justify-center text-gray-400">
+                          <FiPackage size={16} />
+                        </div>
+                      )}
+                      <span className="flex-1 text-sm text-gray-800 truncate">{a.description}</span>
+                      <span className="text-sm font-medium text-green-600">+ {fmtBRL(a.price)}</span>
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Barra inferior: quantidade + adicionar */}
@@ -124,7 +178,7 @@ function ProductModal({ product, onClose }) {
             className="flex-1 flex items-center justify-between bg-green-600 text-white py-3 px-5 rounded-xl font-semibold hover:bg-green-700 transition-colors"
           >
             <span>Adicionar</span>
-            <span>{fmtBRL(Number(product.price) * qty)}</span>
+            <span>{fmtBRL(unitTotal * qty)}</span>
           </button>
         </div>
       </div>

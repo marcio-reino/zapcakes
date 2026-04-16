@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react'
 import api from '../../services/api.js'
 import toast from 'react-hot-toast'
-import { FiPlus, FiEdit2, FiTrash2, FiSearch, FiFileText, FiImage, FiPaperclip, FiBookOpen } from 'react-icons/fi'
+import { FiPlus, FiEdit2, FiTrash2, FiSearch, FiFileText, FiImage, FiPaperclip, FiBookOpen, FiPackage } from 'react-icons/fi'
 import Modal from '../../components/Modal.jsx'
 import ConfirmModal from '../../components/ConfirmModal.jsx'
 import ImageUpload from '../../components/ImageUpload.jsx'
+import AdditionalsModal from '../../components/AdditionalsModal.jsx'
+
+const MAX_ADDITIONALS_PER_PRODUCT = 6
 
 const BRL = (value) => Number(value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const fmtCode = (id) => String(id).padStart(5, '0')
@@ -39,6 +42,9 @@ export default function AdminProducts() {
   const [products, setProducts] = useState([])
   const [categories, setCategories] = useState([])
   const [recipes, setRecipes] = useState([])
+  const [additionals, setAdditionals] = useState([])
+  const [selectedAdditionals, setSelectedAdditionals] = useState([])
+  const [showAdditionalsModal, setShowAdditionalsModal] = useState(false)
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [form, setForm] = useState({ name: '', description: '', price: '', categoryId: '', image: null, minOrder: 1, maxOrder: 500, allowInspirationImages: false, inspirationInstruction: '', maxInspirationImages: 3, recipeId: '' })
@@ -55,10 +61,16 @@ export default function AdminProducts() {
 
   async function loadData() {
     try {
-      const [prodRes, catRes, recRes] = await Promise.all([api.get('/products'), api.get('/categories'), api.get('/recipes')])
+      const [prodRes, catRes, recRes, addRes] = await Promise.all([
+        api.get('/products'),
+        api.get('/categories'),
+        api.get('/recipes'),
+        api.get('/additionals'),
+      ])
       setProducts(prodRes.data)
       setCategories(catRes.data)
       setRecipes(recRes.data.filter((r) => r.active))
+      setAdditionals(addRes.data)
     } catch {
       toast.error('Erro ao carregar dados')
     } finally {
@@ -66,9 +78,25 @@ export default function AdminProducts() {
     }
   }
 
+  async function reloadAdditionals() {
+    try {
+      const res = await api.get('/additionals')
+      setAdditionals(res.data)
+    } catch { /* silencioso */ }
+  }
+
+  function toggleAdditional(id) {
+    setSelectedAdditionals((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id)
+      if (prev.length >= MAX_ADDITIONALS_PER_PRODUCT) return prev
+      return [...prev, id]
+    })
+  }
+
   function openNew() {
     setEditingId(null)
     setForm({ name: '', description: '', price: '', categoryId: '', image: null, minOrder: 1, maxOrder: 500, allowInspirationImages: false, inspirationInstruction: '', maxInspirationImages: 3, recipeId: '' })
+    setSelectedAdditionals([])
     setFormTab('descricao')
     setShowModal(true)
   }
@@ -87,6 +115,7 @@ export default function AdminProducts() {
       maxInspirationImages: product.maxInspirationImages || 3,
       recipeId: product.recipeId ? String(product.recipeId) : '',
     })
+    setSelectedAdditionals(Array.isArray(product.additionals) ? product.additionals.map((a) => a.id) : [])
     setEditingId(product.id)
     setShowModal(true)
   }
@@ -94,6 +123,7 @@ export default function AdminProducts() {
   function closeModal() {
     setEditingId(null)
     setForm({ name: '', description: '', price: '', categoryId: '', image: null, minOrder: 1, maxOrder: 500, allowInspirationImages: false, inspirationInstruction: '', maxInspirationImages: 3, recipeId: '' })
+    setSelectedAdditionals([])
     setFormTab('descricao')
     setShowModal(false)
   }
@@ -134,6 +164,7 @@ export default function AdminProducts() {
         inspirationInstruction: form.inspirationInstruction || null,
         maxInspirationImages: Number(form.maxInspirationImages) || 3,
         recipeId: form.recipeId ? Number(form.recipeId) : null,
+        additionalIds: selectedAdditionals,
       }
 
       if (editingId) {
@@ -144,6 +175,7 @@ export default function AdminProducts() {
         await api.post('/products', payload)
         toast.success('Produto criado!')
         setForm({ name: '', description: '', price: '', categoryId: '', image: null, minOrder: 1, maxOrder: 500, allowInspirationImages: false, inspirationInstruction: '', maxInspirationImages: 3, recipeId: '' })
+        setSelectedAdditionals([])
         setFormTab('descricao')
       }
       loadData()
@@ -174,12 +206,20 @@ export default function AdminProducts() {
     <div>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-800 dark:text-white">Produtos</h1>
-        <button
-          onClick={openNew}
-          className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center gap-2"
-        >
-          <FiPlus size={18} /> Novo Produto
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowAdditionalsModal(true)}
+            className="bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 px-4 py-2 rounded-lg flex items-center gap-2"
+          >
+            <FiPackage size={18} /> Adicionais
+          </button>
+          <button
+            onClick={openNew}
+            className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center gap-2"
+          >
+            <FiPlus size={18} /> Novo Produto
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col md:flex-row gap-4 mb-6">
@@ -322,6 +362,72 @@ export default function AdminProducts() {
                   </div>
                 </>
               )}
+
+              <div className="border-t border-gray-200 dark:border-gray-600 pt-5">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Adicionais deste produto</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      Selecione até {MAX_ADDITIONALS_PER_PRODUCT} adicionais que o cliente pode incluir ao comprar
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAdditionalsModal(true)}
+                    className="text-xs px-2.5 py-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg"
+                  >
+                    Gerenciar
+                  </button>
+                </div>
+
+                {additionals.filter((a) => a.active).length === 0 && (
+                  <p className="text-xs text-gray-400 italic py-2">Nenhum adicional cadastrado. Clique em "Gerenciar" para criar.</p>
+                )}
+
+                <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                  {additionals.filter((a) => a.active).map((a) => {
+                    const checked = selectedAdditionals.includes(a.id)
+                    const disabled = !checked && selectedAdditionals.length >= MAX_ADDITIONALS_PER_PRODUCT
+                    return (
+                      <label
+                        key={a.id}
+                        className={`flex items-center gap-3 p-2 rounded-lg border cursor-pointer transition-colors ${
+                          checked
+                            ? 'bg-green-50 border-green-300 dark:bg-green-900/20 dark:border-green-700'
+                            : disabled
+                              ? 'bg-gray-50 dark:bg-gray-900/30 border-gray-200 dark:border-gray-700 opacity-50 cursor-not-allowed'
+                              : 'bg-white dark:bg-gray-700/30 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={disabled}
+                          onChange={() => toggleAdditional(a.id)}
+                          className="w-4 h-4 text-green-600 rounded"
+                        />
+                        {a.imageUrl ? (
+                          <img src={a.imageUrl} alt={a.description} className="w-10 h-10 rounded object-cover" />
+                        ) : (
+                          <div className="w-10 h-10 rounded bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-gray-400">
+                            <FiPackage size={16} />
+                          </div>
+                        )}
+                        <span className="flex-1 text-sm text-gray-800 dark:text-gray-200 truncate">{a.description}</span>
+                        <span className="text-sm font-medium text-green-600 dark:text-green-400">
+                          {Number(a.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </span>
+                      </label>
+                    )
+                  })}
+                </div>
+
+                {selectedAdditionals.length >= MAX_ADDITIONALS_PER_PRODUCT && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+                    Limite de {MAX_ADDITIONALS_PER_PRODUCT} adicionais atingido.
+                  </p>
+                )}
+              </div>
             </div>
           )}
 
@@ -343,6 +449,12 @@ export default function AdminProducts() {
         title="Remover Produto"
         message="Tem certeza que deseja remover este produto? Esta ação não pode ser desfeita."
         confirmText="Remover"
+      />
+
+      <AdditionalsModal
+        isOpen={showAdditionalsModal}
+        onClose={() => setShowAdditionalsModal(false)}
+        onChange={reloadAdditionals}
       />
 
       {/* Mobile: Cards */}

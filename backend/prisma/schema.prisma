@@ -42,6 +42,7 @@ model User {
   notificationsReceived Notification[] @relation("NotificationReceiver")
   notificationsSent     Notification[] @relation("NotificationSender")
   deliveryZones         DeliveryZone[]
+  additionals           Additional[]
 
   @@map("users")
 }
@@ -293,6 +294,7 @@ model Product {
   recipe     Recipe?     @relation(fields: [recipeId], references: [id])
   orderItems OrderItem[]
   comboItems ComboItem[]
+  productAdditionals ProductAdditional[]
 
   @@map("products")
 }
@@ -388,6 +390,7 @@ model OrderItem {
   order       Order                @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product     Product              @relation(fields: [productId], references: [id])
   attachments OrderItemAttachment[]
+  additionals OrderItemAdditional[]
 
   @@map("order_items")
 }
@@ -403,6 +406,55 @@ model OrderItemAttachment {
   orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
 
   @@map("order_item_attachments")
+}
+
+// Adicionais (addons/extras) configuráveis por loja, atreláveis a produtos
+model Additional {
+  id          Int      @id @default(autoincrement())
+  userId      Int      @map("user_id")
+  description String   @db.VarChar(120)
+  imageUrl    String?  @map("image_url") @db.Text
+  price       Decimal  @db.Decimal(10, 2)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productAdditionals   ProductAdditional[]
+  orderItemAdditionals OrderItemAdditional[]
+
+  @@index([userId, active])
+  @@map("additionals")
+}
+
+// Vínculo M-N entre produto e adicional (até 6 por produto, validado em código)
+model ProductAdditional {
+  id           Int      @id @default(autoincrement())
+  productId    Int      @map("product_id")
+  additionalId Int      @map("additional_id")
+  sortOrder    Int      @default(0) @map("sort_order")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  product    Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  additional Additional @relation(fields: [additionalId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, additionalId])
+  @@map("product_additionals")
+}
+
+// Adicionais escolhidos pelo cliente em cada item do pedido (snapshot de preço/descrição)
+model OrderItemAdditional {
+  id           Int     @id @default(autoincrement())
+  orderItemId  Int     @map("order_item_id")
+  additionalId Int     @map("additional_id")
+  description  String  @db.VarChar(120)
+  price        Decimal @db.Decimal(10, 2)
+  quantity     Int     @default(1)
+
+  orderItem  OrderItem  @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  additional Additional @relation(fields: [additionalId], references: [id])
+
+  @@map("order_item_additionals")
 }
 
 // Instruções do agente de atendimento

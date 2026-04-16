@@ -6,6 +6,11 @@ function getKey(slug) {
   return `zapcakes_cart_${slug}`
 }
 
+function addonsTotal(additionals) {
+  if (!Array.isArray(additionals)) return 0
+  return additionals.reduce((s, a) => s + Number(a.price) * (a.quantity || 1), 0)
+}
+
 export function CartProvider({ slug, children }) {
   const [items, setItems] = useState([])
 
@@ -21,16 +26,18 @@ export function CartProvider({ slug, children }) {
     localStorage.setItem(getKey(slug), JSON.stringify(newItems))
   }
 
-  const addItem = useCallback((product, quantity = 1) => {
+  const addItem = useCallback((product, quantity = 1, additionals = null) => {
     setItems(prev => {
       const existing = prev.find(i => i.product.id === product.id)
       let next
       if (existing) {
         next = prev.map(i =>
-          i.product.id === product.id ? { ...i, quantity: i.quantity + quantity } : i,
+          i.product.id === product.id
+            ? { ...i, quantity: i.quantity + quantity, ...(additionals !== null ? { additionals } : {}) }
+            : i,
         )
       } else {
-        next = [...prev, { product, quantity }]
+        next = [...prev, { product, quantity, ...(additionals ? { additionals } : {}) }]
       }
       localStorage.setItem(getKey(slug), JSON.stringify(next))
       return next
@@ -70,11 +77,24 @@ export function CartProvider({ slug, children }) {
     })
   }, [slug])
 
-  const total = items.reduce((sum, i) => sum + Number(i.product.price) * i.quantity, 0)
+  const updateAdditionals = useCallback((productId, additionals) => {
+    setItems(prev => {
+      const next = prev.map(i =>
+        i.product.id === productId ? { ...i, additionals } : i,
+      )
+      localStorage.setItem(getKey(slug), JSON.stringify(next))
+      return next
+    })
+  }, [slug])
+
+  const total = items.reduce(
+    (sum, i) => sum + (Number(i.product.price) + addonsTotal(i.additionals)) * i.quantity,
+    0,
+  )
   const count = items.reduce((sum, i) => sum + i.quantity, 0)
 
   return (
-    <CartContext.Provider value={{ items, addItem, removeItem, updateQuantity, updateAttachments, clearCart, total, count }}>
+    <CartContext.Provider value={{ items, addItem, removeItem, updateQuantity, updateAttachments, updateAdditionals, clearCart, total, count }}>
       {children}
     </CartContext.Provider>
   )

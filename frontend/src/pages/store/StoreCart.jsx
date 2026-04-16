@@ -323,10 +323,15 @@ export default function StoreCart() {
           }
         }
 
+        const additionals = Array.isArray(item.additionals) && item.additionals.length > 0
+          ? item.additionals.map((a) => ({ additionalId: a.id, quantity: a.quantity || 1 }))
+          : undefined
+
         uploadedItems.push({
           productId: item.product.id,
           quantity: item.quantity,
           attachments: attachments.length ? attachments : undefined,
+          additionals,
         })
       }
 
@@ -402,7 +407,12 @@ export default function StoreCart() {
 
       {/* Items */}
       <div className="space-y-3 mb-6">
-        {items.map(({ product, quantity, attachments }) => (
+        {items.map(({ product, quantity, attachments, additionals }) => {
+          const addonSum = Array.isArray(additionals)
+            ? additionals.reduce((s, a) => s + Number(a.price) * (a.quantity || 1), 0)
+            : 0
+          const lineTotal = (Number(product.price) + addonSum) * quantity
+          return (
           <div key={product.id} className="bg-white rounded-xl p-3 shadow-sm border border-gray-100">
             <div className="flex items-center gap-3">
               {product.imageUrl ? (
@@ -412,7 +422,7 @@ export default function StoreCart() {
               )}
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-gray-800 text-sm truncate">{product.name}</p>
-                <p className="text-green-600 font-bold text-sm">{fmtBRL(Number(product.price) * quantity)}</p>
+                <p className="text-green-600 font-bold text-sm">{fmtBRL(lineTotal)}</p>
               </div>
               <div className="flex items-center gap-3 flex-shrink-0">
                 <button
@@ -430,6 +440,16 @@ export default function StoreCart() {
                 </button>
               </div>
             </div>
+            {Array.isArray(additionals) && additionals.length > 0 && (
+              <div className="mt-2 pl-1 border-l-2 border-green-100 ml-1 space-y-0.5">
+                {additionals.map((a) => (
+                  <div key={a.id} className="flex items-center justify-between text-xs text-gray-600">
+                    <span>+ {a.description}</span>
+                    <span className="text-green-600 font-medium">{fmtBRL(Number(a.price) * (a.quantity || 1))}</span>
+                  </div>
+                ))}
+              </div>
+            )}
             {product.allowInspirationImages && (
               <InspirationUpload
                 product={product}
@@ -438,7 +458,8 @@ export default function StoreCart() {
               />
             )}
           </div>
-        ))}
+          )
+        })}
       </div>
 
       {/* Delivery type */}
