@@ -153,6 +153,36 @@ function StoreContent() {
       .catch(() => setNotFound(true))
   }, [slug])
 
+  // Título da aba e favicon personalizados da loja
+  useEffect(() => {
+    if (!store) return
+
+    const originalTitle = document.title
+    if (store.companyName) document.title = store.companyName
+
+    let link = document.querySelector("link[rel~='icon']")
+    const originalHref = link?.getAttribute('href') || null
+    const originalType = link?.getAttribute('type') || null
+    if (store.logoUrl) {
+      if (!link) {
+        link = document.createElement('link')
+        link.rel = 'icon'
+        document.head.appendChild(link)
+      }
+      link.type = 'image/x-icon'
+      link.href = store.logoUrl
+    }
+
+    return () => {
+      document.title = originalTitle
+      if (link && originalHref !== null) {
+        link.setAttribute('href', originalHref)
+        if (originalType !== null) link.setAttribute('type', originalType)
+        else link.removeAttribute('type')
+      }
+    }
+  }, [store])
+
   if (notFound) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
