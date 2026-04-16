@@ -79,18 +79,35 @@ export default function StoreOrderConfirmation() {
         <p className="text-gray-400 text-xs mb-6">Pedido #{order ? String(order.orderNumber).padStart(5, '0') : '...'}</p>
 
         {order && (() => {
-          const subtotal = order.items?.reduce((s, i) => s + Number(i.price) * i.quantity, 0) || 0
+          const addonTotalFor = (item) => (item.additionals || []).reduce((s, a) => s + Number(a.price) * (a.quantity || 1), 0)
+          const subtotal = order.items?.reduce((s, i) => s + (Number(i.price) + addonTotalFor(i)) * i.quantity, 0) || 0
           const deliveryFee = Number(order.deliveryFee || 0)
           const total = Number(order.total)
           const discount = subtotal + deliveryFee - total
           return (
             <div className="text-left bg-gray-50 rounded-xl p-4 mb-6 space-y-2">
-              {order.items?.map(item => (
-                <div key={item.id} className="flex justify-between text-sm">
-                  <span className="text-gray-600">{item.quantity}x {item.product?.name}</span>
-                  <span className="text-gray-800 font-medium">{fmtBRL(Number(item.price) * item.quantity)}</span>
+              {order.items?.map(item => {
+                const addonTotal = addonTotalFor(item)
+                const lineTotal = (Number(item.price) + addonTotal) * item.quantity
+                return (
+                <div key={item.id}>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">{item.quantity}x {item.product?.name}</span>
+                    <span className="text-gray-800 font-medium">{fmtBRL(lineTotal)}</span>
+                  </div>
+                  {item.additionals?.length > 0 && (
+                    <div className="mt-1 pl-3 border-l-2 border-green-200 space-y-0.5">
+                      {item.additionals.map((a) => (
+                        <div key={a.id} className="flex items-center justify-between text-xs text-gray-500">
+                          <span>+ {a.description}{a.quantity > 1 ? ` (${a.quantity}x)` : ''}</span>
+                          <span className="text-green-600">{fmtBRL(Number(a.price) * (a.quantity || 1))}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              ))}
+                )
+              })}
               {discount > 0.01 && (
                 <div className="flex justify-between text-sm text-green-600">
                   <span>Desconto combo</span>
@@ -123,7 +140,7 @@ export default function StoreOrderConfirmation() {
         })()}
 
         {/* Comprovante PIX */}
-        {order && !order.paymentProof && !proofSent && (reservationValue || store?.pixKey) && (
+        {order && !order.paymentProof && !proofSent && !order.proofVerified && !order.paymentConfirmed && (reservationValue || store?.pixKey) && (
           <div className="text-left p-4 bg-indigo-50 border border-indigo-200 rounded-xl mb-6">
             <div className="flex items-center gap-2 mb-3">
               <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center">
@@ -175,17 +192,33 @@ export default function StoreOrderConfirmation() {
           </div>
         )}
 
-        {/* Comprovante enviado com sucesso */}
-        {proofSent && (
+        {/* Comprovante enviado com sucesso (envio atual OU persistido no pedido) */}
+        {order && (proofSent || order.paymentProof) && (
           <div className="text-left p-4 bg-green-50 border border-green-200 rounded-xl mb-6">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center shrink-0">
                 <FiCheckCircle size={16} className="text-green-600" />
               </div>
-              <div>
-                <p className="text-sm font-semibold text-green-700">Comprovante enviado!</p>
-                <p className="text-xs text-green-600">Aguardando verificação da loja</p>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-green-700">
+                  {order.proofVerified || order.paymentConfirmed ? 'Pagamento confirmado!' : 'Comprovante enviado!'}
+                </p>
+                <p className="text-xs text-green-600">
+                  {order.proofVerified || order.paymentConfirmed
+                    ? 'A loja confirmou o recebimento do pagamento'
+                    : 'Aguardando verificação da loja'}
+                </p>
               </div>
+              {order.paymentProof && !proofSent && (
+                <a
+                  href={order.paymentProof}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 text-xs px-3 py-1.5 bg-green-100 text-green-700 rounded-lg font-semibold hover:bg-green-200 transition-colors"
+                >
+                  Ver comprovante
+                </a>
+              )}
             </div>
           </div>
         )}

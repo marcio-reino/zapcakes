@@ -208,7 +208,10 @@ function OrderCard({ order, slug, store, onProofUpdate }) {
       </div>
       {expanded && (
         <div className="px-4 pb-4 border-t border-gray-100 pt-3 space-y-3">
-          {order.items?.map(item => (
+          {order.items?.map(item => {
+            const addonTotal = (item.additionals || []).reduce((s, a) => s + Number(a.price) * (a.quantity || 1), 0)
+            const lineTotal = (Number(item.price) + addonTotal) * item.quantity
+            return (
             <div key={item.id}>
               <div className="flex items-center gap-3">
                 {item.product?.imageUrl ? (
@@ -220,8 +223,18 @@ function OrderCard({ order, slug, store, onProofUpdate }) {
                   <p className="text-base text-gray-700">{item.product?.name}</p>
                 </div>
                 <span className="text-base text-gray-500">{item.quantity}x</span>
-                <span className="text-base font-medium text-gray-800">{fmtBRL(Number(item.price) * item.quantity)}</span>
+                <span className="text-base font-medium text-gray-800">{fmtBRL(lineTotal)}</span>
               </div>
+              {item.additionals?.length > 0 && (
+                <div className="ml-[60px] mt-1.5 space-y-0.5">
+                  {item.additionals.map((a) => (
+                    <div key={a.id} className="flex items-center justify-between text-xs text-gray-500">
+                      <span>+ {a.description}{a.quantity > 1 ? ` (${a.quantity}x)` : ''}</span>
+                      <span className="text-green-600">{fmtBRL(Number(a.price) * (a.quantity || 1))}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
               {item.attachments?.length > 0 && (
                 <div className="ml-[60px] mt-1.5 mb-1">
                   <p className="text-sm font-semibold text-purple-600 mb-1">📸 Fotos de inspiração</p>
@@ -235,7 +248,8 @@ function OrderCard({ order, slug, store, onProofUpdate }) {
                 </div>
               )}
             </div>
-          ))}
+            )
+          })}
           {order.notes && (
             <p className="text-sm text-gray-500 mt-2 italic">Obs: {order.notes}</p>
           )}
