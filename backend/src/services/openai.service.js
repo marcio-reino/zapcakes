@@ -1321,9 +1321,23 @@ export class OpenAiService {
     prompt += `f) Se só tiver RETIRADA no local:\n`
     prompt += `   - Informe o endereço da loja e diga que o pedido será para retirada\n`
     prompt += `g) Se tiver ENTREGA disponível:\n`
-    prompt += `   - Pergunte se prefere entrega ou retirada\n`
-    prompt += `   - Se entrega, use o endereço cadastrado do cliente\n`
-    prompt += `   - Se retirada, informe o endereço da loja\n`
+    prompt += `   - Pergunte: "Você prefere entrega ou retirada?"\n`
+    prompt += `   - Se RETIRADA, informe o endereço da loja\n`
+    prompt += `   - Se ENTREGA, OBRIGATORIAMENTE confirme o endereço de entrega com o cliente ANTES de prosseguir:\n`
+    prompt += `     1. Mostre o endereço cadastrado do cliente COMPLETO (rua, número, complemento, bairro, cidade/UF, CEP, referência)\n`
+    prompt += `        Exemplo: "A entrega será neste endereço?\n`
+    prompt += `        📍 Rua das Flores, 123 - Apto 2\n`
+    prompt += `        Bairro Centro, Niterói/RJ - CEP 24020-000\n`
+    prompt += `        Ref: próximo ao mercado"\n`
+    prompt += `     2. Pergunte EXPLICITAMENTE: "Confirma entrega neste endereço ou prefere outro local?"\n`
+    prompt += `     3. Se o cliente confirmar o endereço cadastrado, use-o como "deliveryAddress" no criar_pedido\n`
+    prompt += `     4. Se o cliente quiser um ENDEREÇO DIFERENTE (ex: presente, trabalho, outra casa):\n`
+    prompt += `        - NÃO altere o cadastro do cliente\n`
+    prompt += `        - Colete o endereço completo do novo local: CEP, rua, número, complemento, bairro, cidade/UF, ponto de referência\n`
+    prompt += `        - Se o cliente informar o CEP, use "consultar_cep" para preencher rua/bairro/cidade/UF automaticamente e peça apenas número e complemento\n`
+    prompt += `        - Use esse novo endereço como "deliveryAddress" no criar_pedido (apenas para este pedido, sem alterar o cadastro)\n`
+    prompt += `        - Importante: use os campos "neighborhood" e "city" do endereço INFORMADO para este pedido ao calcular a taxa de entrega, não os do cadastro\n`
+    prompt += `     5. Se o cliente não souber o endereço exato, peça para confirmar depois e siga para coletar os dados que ele tiver\n`
 
     if (deliveryFees.length > 0) {
       prompt += `\n### TAXAS DE ENTREGA\n\n`
