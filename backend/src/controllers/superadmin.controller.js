@@ -533,46 +533,79 @@ export class SuperadminController {
     const userId = request.user.id
     // Body opcional: { phoneNumber } para gerar pairing code (8 digitos)
     // em vez de QR. O numero deve vir com DDI+DDD+numero, apenas digitos
-    // (ex: 5521999999999).
+    // (ex: 5521999999999). O Evolution/Baileys so gera pairingCode quando
+    // e' passado 'number' NO /instance/create — nao no /connect. Por isso,
+    // quando phoneNumber vier, precisamos recriar a instance.
     const { phoneNumber } = request.body || {}
+    const instanceName = 'ZapCakes-System'
+    const normalizedPhone = phoneNumber ? String(phoneNumber).replace(/\D/g, '') : null
+
     let instance = await prisma.instance.findFirst({
-      where: { instanceName: 'ZapCakes-System' },
+      where: { instanceName },
     })
 
-    // Cria instância se não existir
+    // Fluxo pairing code: deleta instance existente (se houver) e recria
+    // com number no body do create para obter pairingCode.
+    if (normalizedPhone) {
+      try {
+        // Best-effort: logout + delete. Se nao existir na Evolution, ignora.
+        try { await evolutionApi.delete(`/instance/logout/${instanceName}`) } catch { /* noop */ }
+        try { await evolutionApi.delete(`/instance/delete/${instanceName}`) } catch { /* noop */ }
+
+        const { data } = await evolutionApi.post('/instance/create', {
+          instanceName,
+          integration: 'WHATSAPP-BAILEYS',
+          qrcode: true,
+          number: normalizedPhone,
+        })
+
+        const pairingCode = data?.qrcode?.pairingCode || data?.pairingCode || null
+        const qrcode = data?.qrcode?.base64 || data?.base64 || null
+
+        if (!instance) {
+          instance = await prisma.instance.create({ data: { userId, instanceName } })
+        }
+        await prisma.instance.update({ where: { id: instance.id }, data: { status: 'CONNECTING' } })
+
+        if (!pairingCode && !qrcode) {
+          return reply.status(500).send({ error: 'Evolution não retornou código nem QR' })
+        }
+        return { qrcode, pairingCode, status: 'CONNECTING' }
+      } catch (err) {
+        return reply.status(500).send({
+          error: 'Erro ao gerar código de pareamento',
+          details: err?.response?.data?.message || err?.response?.data?.response?.message || err.message,
+        })
+      }
+    }
+
+    // Fluxo QR tradicional: cria instance se nao existir e pede connect
     if (!instance) {
       try {
         await evolutionApi.post('/instance/create', {
-          instanceName: 'ZapCakes-System',
+          instanceName,
           integration: 'WHATSAPP-BAILEYS',
           qrcode: true,
         })
       } catch (err) {
-        // Ignora se já existe na Evolution
         const msg = JSON.stringify(err?.response?.data || '')
         if (!msg.includes('already')) {
           return reply.status(500).send({ error: 'Erro ao criar instância na Evolution API' })
         }
       }
-
       instance = await prisma.instance.create({
-        data: { userId, instanceName: 'ZapCakes-System' },
+        data: { userId, instanceName },
       })
     }
 
-    // Solicita QR code (ou pairing code se phoneNumber foi informado)
     try {
-      const normalizedPhone = phoneNumber ? String(phoneNumber).replace(/\D/g, '') : null
-      const path = normalizedPhone
-        ? `/instance/connect/${instance.instanceName}?number=${encodeURIComponent(normalizedPhone)}`
-        : `/instance/connect/${instance.instanceName}`
-      const { data } = await evolutionApi.get(path)
+      const { data } = await evolutionApi.get(`/instance/connect/${instanceName}`)
       await prisma.instance.update({ where: { id: instance.id }, data: { status: 'CONNECTING' } })
       const qrcode = data?.base64 || data?.qrcode?.base64 || data?.qrcode || null
       const pairingCode = data?.pairingCode || data?.qrcode?.pairingCode || null
       return { qrcode, pairingCode, status: 'CONNECTING' }
     } catch (err) {
-      return reply.status(500).send({ error: 'Erro ao gerar código de conexão', details: err?.response?.data?.message || err.message })
+      return reply.status(500).send({ error: 'Erro ao gerar QR Code', details: err?.response?.data?.message || err.message })
     }
   }
 
