@@ -215,13 +215,50 @@ export class OrderController {
       include: { items: { include: { product: true, attachments: true, additionals: true } } },
     })
 
-    // Envia mensagem de confirmação via WhatsApp se tiver remoteJid
+    // Envia mensagem de confirmação via WhatsApp se tiver remoteJid.
+    // Se houver divergência informada pelo operador, inclui detalhes do valor
+    // esperado x recebido e a diferença (pendente ou excedente).
     if (order.remoteJid) {
-      await OrderController._sendWhatsApp(
-        request.user.id,
-        order.remoteJid,
-        `✅ *Pagamento da reserva verificado!*\n\nPedido #${padNum(order.orderNumber)} confirmado. Em breve iniciaremos a produção! 🎂`
-      )
+      const code = padNum(order.orderNumber)
+      const fmt = (v) => Number(v).toFixed(2).replace('.', ',')
+
+      const hasExpected = order.reservation != null
+      const hasReceived = updateData.depositAmount != null
+      const divergent = updateData.depositDivergence === true && hasExpected && hasReceived
+
+      let msg
+      if (divergent) {
+        const expected = Number(order.reservation)
+        const received = Number(updateData.depositAmount)
+        const diff = expected - received
+
+        if (Math.abs(diff) < 0.005) {
+          // Flag de divergência marcada mas valores iguais — trata como normal
+          msg = `✅ *Pagamento da reserva verificado!*\n\nPedido #${code} confirmado. Em breve iniciaremos a produção! 🎂`
+        } else if (diff > 0) {
+          msg = `⚠️ *Pagamento recebido com divergência*\n\n` +
+            `Pedido #${code}\n\n` +
+            `• Valor esperado da reserva: R$ ${fmt(expected)}\n` +
+            `• Valor recebido: R$ ${fmt(received)}\n` +
+            `• Diferença pendente: R$ ${fmt(diff)}\n\n` +
+            `Confirmamos o recebimento do seu pagamento, mas identificamos um valor abaixo do combinado para a reserva.\n\n` +
+            `A diferença de R$ ${fmt(diff)} deverá ser somada ao valor restante pago na entrega/retirada.\n\n` +
+            `Qualquer dúvida, estou aqui! 🎂`
+        } else {
+          const extra = Math.abs(diff)
+          msg = `✅ *Pagamento recebido com divergência (valor maior)*\n\n` +
+            `Pedido #${code}\n\n` +
+            `• Valor esperado da reserva: R$ ${fmt(expected)}\n` +
+            `• Valor recebido: R$ ${fmt(received)}\n` +
+            `• Valor pago a mais: R$ ${fmt(extra)}\n\n` +
+            `Confirmamos o recebimento do seu pagamento. Identificamos um valor acima do combinado para a reserva, então esse excedente será abatido do saldo a pagar na entrega/retirada.\n\n` +
+            `Qualquer dúvida, estou aqui! 🎂`
+        }
+      } else {
+        msg = `✅ *Pagamento da reserva verificado!*\n\nPedido #${code} confirmado. Em breve iniciaremos a produção! 🎂`
+      }
+
+      await OrderController._sendWhatsApp(request.user.id, order.remoteJid, msg)
     }
 
     return updated
