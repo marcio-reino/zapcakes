@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import api from '../../services/api.js'
 import toast from 'react-hot-toast'
-import { FiSend, FiRefreshCw, FiUser, FiCpu, FiMessageSquare } from 'react-icons/fi'
+import { FiSend, FiRefreshCw, FiUser, FiCpu, FiMessageSquare, FiPaperclip, FiX } from 'react-icons/fi'
 
 function genSessionId() {
   return `${Date.now()}${Math.random().toString(36).slice(2, 8)}`
@@ -40,8 +40,10 @@ export default function SuperadminSimulator() {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
+  const [attachment, setAttachment] = useState(null) // { dataUrl, name, size }
   const scrollRef = useRef(null)
   const inputRef = useRef(null)
+  const fileInputRef = useRef(null)
 
   useEffect(() => {
     api.get('/superadmin/simulator/accounts')
@@ -84,14 +86,43 @@ export default function SuperadminSimulator() {
     }
   }
 
+  async function handleFilePick(e) {
+    const file = e.target.files?.[0]
+    e.target.value = '' // permite re-selecionar o mesmo arquivo
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      toast.error('Apenas imagens são suportadas')
+      return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Imagem muito grande (máx 10MB)')
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => setAttachment({ dataUrl: reader.result, name: file.name, size: file.size })
+    reader.onerror = () => toast.error('Erro ao ler o arquivo')
+    reader.readAsDataURL(file)
+  }
+
   async function handleSend(e) {
     e?.preventDefault()
     if (!selectedUserId) return toast.error('Selecione uma conta primeiro')
-    if (!input.trim() || sending) return
+    if (sending) return
+    if (!input.trim() && !attachment) return
 
     const userMessage = input.trim()
+    const currentAttachment = attachment
     setInput('')
-    setMessages((prev) => [...prev, { role: 'user', content: userMessage, ts: Date.now() }])
+    setAttachment(null)
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: 'user',
+        content: userMessage,
+        imageDataUrl: currentAttachment?.dataUrl || null,
+        ts: Date.now(),
+      },
+    ])
     setSending(true)
 
     try {
@@ -99,6 +130,7 @@ export default function SuperadminSimulator() {
         userId: Number(selectedUserId),
         sessionId,
         message: userMessage,
+        imageDataUrl: currentAttachment?.dataUrl || undefined,
       })
       setMessages((prev) => [...prev, { role: 'assistant', content: data.reply, ts: Date.now() }])
     } catch (err) {
@@ -184,7 +216,12 @@ export default function SuperadminSimulator() {
                     ? 'bg-red-50 text-red-700 border border-red-200 rounded-bl-none dark:bg-red-900/30 dark:text-red-300 dark:border-red-800'
                     : 'bg-white text-gray-800 border border-gray-200 rounded-bl-none dark:bg-gray-800 dark:text-gray-100 dark:border-gray-700'
               }`}>
-                {renderContent(m.content)}
+                {m.imageDataUrl && (
+                  <a href={m.imageDataUrl} target="_blank" rel="noopener noreferrer" className="block mb-2">
+                    <img src={m.imageDataUrl} alt="anexo" className="max-h-48 rounded-lg" />
+                  </a>
+                )}
+                {m.content && renderContent(m.content)}
               </div>
               {m.role === 'user' && (
                 <div className="w-8 h-8 rounded-full bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300 flex items-center justify-center flex-shrink-0">
@@ -209,8 +246,45 @@ export default function SuperadminSimulator() {
           )}
         </div>
 
+        {/* Preview do anexo */}
+        {attachment && (
+          <div className="px-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+            <div className="flex items-center gap-3 p-2 rounded-lg bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600">
+              <img src={attachment.dataUrl} alt="preview" className="w-14 h-14 rounded-lg object-cover" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-gray-800 dark:text-gray-100 truncate">{attachment.name}</p>
+                <p className="text-xs text-gray-500">{(attachment.size / 1024).toFixed(0)} KB</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAttachment(null)}
+                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg"
+                title="Remover anexo"
+              >
+                <FiX size={16} />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Input */}
-        <form onSubmit={handleSend} className="p-3 border-t border-gray-200 dark:border-gray-700 flex gap-2">
+        <form onSubmit={handleSend} className="p-3 border-t border-gray-200 dark:border-gray-700 flex gap-2 items-center">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleFilePick}
+            className="hidden"
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={!selectedUserId || sending}
+            className="p-2.5 text-gray-500 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Anexar imagem"
+          >
+            <FiPaperclip size={20} />
+          </button>
           <input
             ref={inputRef}
             type="text"
@@ -222,7 +296,7 @@ export default function SuperadminSimulator() {
           />
           <button
             type="submit"
-            disabled={!selectedUserId || sending || !input.trim()}
+            disabled={!selectedUserId || sending || (!input.trim() && !attachment)}
             className="px-5 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <FiSend size={16} />

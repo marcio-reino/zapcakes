@@ -7,6 +7,12 @@ import prisma from '../config/database.js'
 import evolutionApi from '../config/evolution.js'
 import { sendMail } from '../services/mail.service.js'
 import openAiService from '../services/openai-instance.js'
+import { UploadService } from '../services/upload.service.js'
+import redisClient, { isRedisReady } from '../config/redis.js'
+
+const SIM_INSPIRATION_KEY = (jid) => `zapcakes:inspiration:${jid}`
+const SIM_INSPIRATION_TTL_SEC = 60 * 60
+const SIM_MAX_IMAGE_BYTES = 10 * 1024 * 1024 // 10MB
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -1198,30 +1204,80 @@ export class SuperadminController {
   }
 
   // Envia mensagem para o agente como se fosse um cliente via WhatsApp
-  // Body: { userId: number, sessionId: string, message: string }
+  // Body: { userId, sessionId, message, imageDataUrl? }
+  //  - imageDataUrl: string data URL (ex: 'data:image/jpeg;base64,...') para
+  //    simular envio de anexo. Quando presente:
+  //    1. Faz upload pro MinIO (pasta inspiracao)
+  //    2. Cacheia URL no Redis (mesmo padrao do webhook real) para que
+  //       criar_pedido associe ao pedido como OrderItemAttachment
+  //    3. Chama chatWithImage em vez de chat (modelo 've' a imagem)
   async simulatorSend(request, reply) {
-    const { userId, sessionId, message } = request.body || {}
-    if (!userId || !sessionId || !message || !String(message).trim()) {
-      return reply.status(400).send({ error: 'userId, sessionId e message sao obrigatorios' })
+    const { userId, sessionId, message, imageDataUrl } = request.body || {}
+    if (!userId || !sessionId) {
+      return reply.status(400).send({ error: 'userId e sessionId sao obrigatorios' })
+    }
+    // message e obrigatorio quando nao tem imagem; com imagem aceita vazio
+    const hasImage = typeof imageDataUrl === 'string' && imageDataUrl.startsWith('data:')
+    if (!hasImage && (!message || !String(message).trim())) {
+      return reply.status(400).send({ error: 'message e obrigatoria (ou envie uma imagem)' })
     }
 
     const owner = await prisma.user.findUnique({ where: { id: Number(userId) } })
     if (!owner) return reply.status(404).send({ error: 'Conta nao encontrada' })
 
-    // sessionId vira um remoteJid fake isolado deste superadmin
-    // Formato WhatsApp: <numeros>@s.whatsapp.net (Evolution espera esse sufixo
-    // em algumas tools). Usamos um prefixo fixo que identifica simulador.
     const remoteJid = `sim${String(sessionId).replace(/[^\w-]/g, '').slice(0, 40)}@s.whatsapp.net`
 
+    // Processa imagem anexada (se houver) antes de chamar o modelo
+    let uploadedUrl = null
+    if (hasImage) {
+      try {
+        const m = imageDataUrl.match(/^data:([^;]+);base64,(.+)$/)
+        if (!m) return reply.status(400).send({ error: 'imageDataUrl invalido' })
+        const mimetype = m[1]
+        const buffer = Buffer.from(m[2], 'base64')
+        if (buffer.length > SIM_MAX_IMAGE_BYTES) {
+          return reply.status(400).send({ error: 'Imagem muito grande (max 10MB)' })
+        }
+        const { url } = await UploadService.uploadBuffer(buffer, mimetype, 'inspiracao')
+        uploadedUrl = url
+        // Cacheia URL no Redis (mesmo padrao do webhook) para que criar_pedido
+        // associe ao pedido como OrderItemAttachment
+        if (isRedisReady()) {
+          try {
+            const entry = JSON.stringify({ url, ts: Date.now() })
+            await redisClient.rpush(SIM_INSPIRATION_KEY(remoteJid), entry)
+            await redisClient.ltrim(SIM_INSPIRATION_KEY(remoteJid), -10, -1)
+            await redisClient.expire(SIM_INSPIRATION_KEY(remoteJid), SIM_INSPIRATION_TTL_SEC)
+          } catch { /* silencioso */ }
+        }
+      } catch (upErr) {
+        return reply.status(500).send({ error: 'Erro ao salvar imagem', details: upErr.message })
+      }
+    }
+
     try {
-      // No simulador, chamamos direto o modelo sem deixar o processCommands
-      // interceptar markers como [MOSTRAR_PRODUTOS:X] (que em producao enviam
-      // imagens via Evolution). Aqui convertemos esses markers em texto.
+      // No simulador chamamos passos manuais para expandir markers no retorno
+      // (em producao o webhook envia imagens via Evolution; aqui converte pra texto).
       openAiService._currentRemoteJid = remoteJid
       openAiService._currentInstanceName = null
 
       const systemPrompt = await openAiService.buildSystemPrompt(Number(userId))
-      await openAiService.addMessage(remoteJid, 'user', String(message))
+
+      const textContent = hasImage
+        ? (String(message || '').trim() || 'O cliente enviou uma imagem. Descreva o que voce ve.')
+        : String(message)
+
+      if (hasImage) {
+        // Content multimodal (mesmo padrao de chatWithImage)
+        const content = [
+          { type: 'text', text: textContent },
+          { type: 'image_url', image_url: { url: imageDataUrl } },
+        ]
+        await openAiService.addMessage(remoteJid, 'user', content)
+      } else {
+        await openAiService.addMessage(remoteJid, 'user', textContent)
+      }
+
       const history = await openAiService.getConversation(remoteJid)
       const msgs = [
         { role: 'system', content: systemPrompt },
@@ -1229,11 +1285,10 @@ export class SuperadminController {
       ]
       let raw = await openAiService.processWithTools(msgs, Number(userId), remoteJid, null)
 
-      // Expande markers do agente em listas legiveis para o simulador
       const expanded = await expandSimulatorMarkers(raw, Number(userId))
       await openAiService.addMessage(remoteJid, 'assistant', raw)
 
-      return { reply: expanded, remoteJid }
+      return { reply: expanded, remoteJid, uploadedUrl }
     } catch (err) {
       return reply.status(500).send({ error: 'Erro ao processar mensagem', details: err.message })
     }
