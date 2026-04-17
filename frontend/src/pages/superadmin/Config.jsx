@@ -3,7 +3,7 @@ import api from '../../services/api.js'
 import toast from 'react-hot-toast'
 import Modal from '../../components/Modal.jsx'
 import ConfirmModal from '../../components/ConfirmModal.jsx'
-import { FiSave, FiLoader, FiWifi, FiWifiOff } from 'react-icons/fi'
+import { FiSave, FiLoader, FiWifi, FiWifiOff, FiGrid, FiHash, FiChevronRight } from 'react-icons/fi'
 import { FaWhatsapp } from 'react-icons/fa'
 import { HiOutlineBuildingOffice2, HiOutlineCreditCard, HiOutlineGlobeAlt } from 'react-icons/hi2'
 
@@ -37,6 +37,7 @@ export default function Config() {
   const [waPairingCode, setWaPairingCode] = useState(null)
   const [waLoading, setWaLoading] = useState(false)
   const [qrModalOpen, setQrModalOpen] = useState(false)
+  const [methodModalOpen, setMethodModalOpen] = useState(false)
   const [pairingInputVisible, setPairingInputVisible] = useState(false)
   const [pairingPhone, setPairingPhone] = useState('')
   const [disconnectModalOpen, setDisconnectModalOpen] = useState(false)
@@ -334,7 +335,7 @@ export default function Config() {
                 </div>
               )}
               <button
-                onClick={handleConnect}
+                onClick={() => setMethodModalOpen(true)}
                 disabled={waLoading}
                 className="flex items-center gap-2 px-5 py-2.5 bg-[#25D366] text-white rounded-lg hover:bg-[#20bd5a] transition-colors text-sm font-medium disabled:opacity-50"
               >
@@ -396,12 +397,14 @@ export default function Config() {
       {/* Modal QR Code */}
       <Modal isOpen={qrModalOpen} onClose={handleCloseQrModal} title="Conectar WhatsApp">
         <div className="flex flex-col items-center gap-5">
-          <div className="flex items-center gap-2 p-3 w-full bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
-            <FiLoader className="animate-spin text-yellow-600 flex-shrink-0" size={16} />
-            <p className="text-sm text-yellow-700 dark:text-yellow-400">
-              {waPairingCode ? 'Aguardando confirmação no WhatsApp...' : 'Aguardando leitura do QR Code...'}
-            </p>
-          </div>
+          {(waQrCode || waPairingCode) && (
+            <div className="flex items-center gap-2 p-3 w-full bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+              <FiLoader className="animate-spin text-yellow-600 flex-shrink-0" size={16} />
+              <p className="text-sm text-yellow-700 dark:text-yellow-400">
+                {waPairingCode ? 'Aguardando confirmação no WhatsApp...' : 'Aguardando leitura do QR Code...'}
+              </p>
+            </div>
+          )}
 
           {waPairingCode ? (
             <div className="w-full flex flex-col items-center gap-3">
@@ -437,75 +440,134 @@ export default function Config() {
                 </p>
               </div>
             </>
-          ) : (
+          ) : pairingInputVisible ? null : (
             <div className="w-72 h-72 flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded-xl">
               <FiLoader className="animate-spin text-gray-400" size={32} />
             </div>
           )}
 
-          {/* Alternativa: código de pareamento */}
-          {!waPairingCode && (
+          {/* Quando exibindo QR: link para regerar OU input pairing pendente */}
+          {!waPairingCode && !pairingInputVisible && (
             <div className="w-full border-t border-gray-200 dark:border-gray-700 pt-4 flex flex-col items-center gap-2">
-              {pairingInputVisible ? (
-                <div className="w-full space-y-2">
-                  <label className="text-sm text-gray-600 dark:text-gray-300 block text-center">
-                    Digite o número do WhatsApp (DDI + DDD + número)
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="tel"
-                      inputMode="numeric"
-                      value={pairingPhone}
-                      onChange={(e) => setPairingPhone(e.target.value)}
-                      placeholder="Ex: 5521999999999"
-                      disabled={waLoading}
-                      className="flex-1 px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white text-sm outline-none focus:ring-2 focus:ring-green-500"
-                    />
-                    <button
-                      onClick={handleGeneratePairingCode}
-                      disabled={waLoading || !pairingPhone.trim()}
-                      className="px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium disabled:opacity-50"
-                    >
-                      {waLoading ? 'Gerando...' : 'Gerar código'}
-                    </button>
-                  </div>
-                  <button
-                    onClick={() => { setPairingInputVisible(false); setPairingPhone('') }}
-                    className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 block mx-auto"
-                  >
-                    Voltar ao QR Code
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <button
-                    onClick={() => handleConnect()}
-                    disabled={waLoading}
-                    className="text-sm text-green-600 dark:text-green-400 hover:underline disabled:opacity-50"
-                  >
-                    {waLoading ? 'Gerando...' : 'Gerar novo QR Code'}
-                  </button>
-                  <button
-                    onClick={() => setPairingInputVisible(true)}
-                    disabled={waLoading}
-                    className="text-sm text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50"
-                  >
-                    Conectar com código (sem QR)
-                  </button>
-                </>
-              )}
+              <button
+                onClick={() => handleConnect()}
+                disabled={waLoading}
+                className="text-sm text-green-600 dark:text-green-400 hover:underline disabled:opacity-50"
+              >
+                {waLoading ? 'Gerando...' : 'Gerar novo QR Code'}
+              </button>
+              <button
+                onClick={() => { setWaQrCode(null); setPairingInputVisible(true) }}
+                disabled={waLoading}
+                className="text-xs text-gray-500 dark:text-gray-400 hover:underline disabled:opacity-50"
+              >
+                Mudar para código de pareamento
+              </button>
+            </div>
+          )}
+
+          {/* Input do número pra gerar pairing code */}
+          {pairingInputVisible && !waPairingCode && (
+            <div className="w-full space-y-3">
+              <label className="text-sm text-gray-600 dark:text-gray-300 block text-center">
+                Digite o número do WhatsApp (DDI + DDD + número)
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="tel"
+                  inputMode="numeric"
+                  value={pairingPhone}
+                  onChange={(e) => setPairingPhone(e.target.value)}
+                  placeholder="Ex: 5521999999999"
+                  disabled={waLoading}
+                  autoFocus
+                  className="flex-1 px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white text-sm outline-none focus:ring-2 focus:ring-green-500"
+                />
+                <button
+                  onClick={handleGeneratePairingCode}
+                  disabled={waLoading || !pairingPhone.trim()}
+                  className="px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium disabled:opacity-50"
+                >
+                  {waLoading ? 'Gerando...' : 'Gerar código'}
+                </button>
+              </div>
+              <button
+                onClick={() => { setPairingInputVisible(false); setPairingPhone(''); handleConnect() }}
+                disabled={waLoading}
+                className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 block mx-auto"
+              >
+                Usar QR Code em vez disso
+              </button>
             </div>
           )}
 
           {waPairingCode && (
             <button
-              onClick={() => { setWaPairingCode(null); handleConnect() }}
+              onClick={() => { setWaPairingCode(null); setPairingInputVisible(false); setPairingPhone(''); handleConnect() }}
               disabled={waLoading}
               className="text-sm text-gray-500 dark:text-gray-400 hover:underline disabled:opacity-50"
             >
-              Voltar ao QR Code
+              Mudar para QR Code
             </button>
           )}
+        </div>
+      </Modal>
+
+      {/* Modal de escolha do método */}
+      <Modal isOpen={methodModalOpen} onClose={() => setMethodModalOpen(false)} title="Conectar WhatsApp">
+        <div className="space-y-3">
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+            Escolha como deseja conectar o número do sistema:
+          </p>
+
+          {/* QR Code */}
+          <button
+            onClick={() => {
+              setMethodModalOpen(false)
+              setPairingInputVisible(false)
+              setPairingPhone('')
+              setWaPairingCode(null)
+              handleConnect()
+            }}
+            disabled={waLoading}
+            className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700 hover:border-green-500 dark:hover:border-green-500 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed group"
+          >
+            <div className="w-12 h-12 rounded-lg bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 flex items-center justify-center flex-shrink-0 group-hover:bg-green-200 dark:group-hover:bg-green-900/50">
+              <FiGrid size={24} />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-gray-800 dark:text-white">QR Code</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                Aponte a câmera do celular para a imagem
+              </p>
+            </div>
+            <FiChevronRight size={20} className="text-gray-400 group-hover:text-green-600 dark:group-hover:text-green-400 flex-shrink-0" />
+          </button>
+
+          {/* Pairing Code */}
+          <button
+            onClick={() => {
+              setMethodModalOpen(false)
+              setWaQrCode(null)
+              setWaPairingCode(null)
+              setPairingPhone('')
+              setPairingInputVisible(true)
+              setQrModalOpen(true)
+            }}
+            disabled={waLoading}
+            className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700 hover:border-blue-500 dark:hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed group"
+          >
+            <div className="w-12 h-12 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center flex-shrink-0 group-hover:bg-blue-200 dark:group-hover:bg-blue-900/50">
+              <FiHash size={24} />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-gray-800 dark:text-white">Código de pareamento</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                Digite um código de 8 dígitos no WhatsApp
+              </p>
+            </div>
+            <FiChevronRight size={20} className="text-gray-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 flex-shrink-0" />
+          </button>
         </div>
       </Modal>
 
