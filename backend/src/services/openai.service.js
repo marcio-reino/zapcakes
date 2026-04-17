@@ -1068,27 +1068,36 @@ export class OpenAiService {
           }
 
           const WEEKDAYS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
-          const dates = available.map(s => {
+          const structuredDates = available.map(s => {
             const d = new Date(s.date)
             const day = String(d.getUTCDate()).padStart(2, '0')
             const month = String(d.getUTCMonth() + 1).padStart(2, '0')
+            const year = d.getUTCFullYear()
             const weekday = WEEKDAYS[d.getUTCDay()]
-            let info = `${day}/${month} (${weekday})`
-            if (s.categorySlots.length > 0) {
-              const cats = s.categorySlots.map(cs => {
-                const remaining = cs.maxUnits - cs.currentUnits
-                return `${cs.category.name}: ${remaining} disponíveis`
-              }).join(', ')
-              info += ` [${cats}]`
+            const categories = s.categorySlots.map(cs => ({
+              name: cs.category.name,
+              available: cs.maxUnits - cs.currentUnits,
+            }))
+            return {
+              date: `${day}/${month}/${year}`,
+              weekday,
+              totalAvailable: s.maxOrders - s.currentOrders,
+              categories,
             }
-            return info
+          })
+
+          const humanLines = structuredDates.map(d => {
+            const cats = d.categories.length > 0
+              ? d.categories.map(c => `${c.name}=${c.available}`).join(', ')
+              : `total=${d.totalAvailable}`
+            return `${d.date} (${d.weekday}) — ${cats}`
           })
 
           return JSON.stringify({
             agendaConfigured: true,
             available: true,
-            dates,
-            message: `Datas disponíveis para entrega/retirada:\n${dates.join('\n')}`,
+            dates: structuredDates,
+            message: `DATAS DISPONIVEIS NA AGENDA (use apenas estas informacoes, NAO invente):\n${humanLines.join('\n')}\n\nRegra: uma data so esta INDISPONIVEL se NAO aparecer acima. Uma categoria so esta indisponivel se o valor for 0. Se uma data e categoria aparecem com valor >= 1, elas ESTAO disponiveis.`,
           })
         } catch (err) {
           console.error('Erro ao consultar agenda:', err.message)
@@ -1433,9 +1442,13 @@ export class OpenAiService {
     prompt += `   - O cliente pode responder com data e horário (ex: "Sábado dia 22 às 14h", "25/03 às 10h", "próxima sexta")\n`
     prompt += `   - Após o cliente informar a data desejada, você DEVE OBRIGATORIAMENTE chamar a função "consultar_agenda" para verificar se há disponibilidade. NÃO pule esta etapa.\n`
     prompt += `   - SEMPRE que o cliente mencionar UMA NOVA DATA (mesmo que você já tenha dito antes que não havia disponibilidade), CHAME "consultar_agenda" NOVAMENTE. A agenda é atualizada em tempo real pelo operador — nunca confie em uma resposta antiga sua. CADA NOVA DATA = NOVA CHAMADA a consultar_agenda.\n`
-    prompt += `   - A função "consultar_agenda" retorna uma lista de datas com vagas. Para verificar disponibilidade, basta checar se o DIA informado pelo cliente está presente nessa lista.\n`
-    prompt += `   - Exemplo: se o cliente diz "dia 28" e a agenda retorna ["26/03 (Quinta)", "27/03 (Sexta)", "28/03 (Sábado)"], então 28/03 ESTÁ disponível. Confirme!\n`
-    prompt += `   - IMPORTANTE: NÃO diga que a data está indisponível se ela aparece na lista retornada pela função. Confie SEMPRE no retorno mais recente da função consultar_agenda, nunca em suas respostas anteriores.\n`
+    prompt += `   - A função "consultar_agenda" retorna um array "dates" onde cada item tem { date, weekday, totalAvailable, categories:[{name, available}] }. Use APENAS os valores retornados — NÃO invente o dia da semana nem invente se está disponível.\n`
+    prompt += `   - Regra OBRIGATÓRIA de interpretação:\n`
+    prompt += `     • Se a data informada pelo cliente APARECE no array "dates", ela ESTÁ disponível. Ponto final.\n`
+    prompt += `     • Se a categoria do produto tem "available" >= 1 naquela data, ela ESTÁ disponível para aquele produto.\n`
+    prompt += `     • Uma categoria só está INDISPONÍVEL se "available" for exatamente 0, ou se a data inteira não aparecer no array.\n`
+    prompt += `     • NUNCA diga "não há disponibilidade" se a função retornou a data com categorias >= 1.\n`
+    prompt += `   - NÃO reformate o dia da semana — copie exatamente o valor de "weekday" retornado (ex: se retornou "Segunda", escreva "Segunda", nunca invente "Sábado").\n`
     prompt += `   - Se a agenda NÃO estiver configurada (agendaConfigured=false): aceite qualquer data que o cliente informar\n`
     prompt += `   - Se a data informada pelo cliente estiver DISPONÍVEL na lista: confirme dizendo "Temos disponibilidade para esse dia!" e pergunte o HORÁRIO de preferência (ex: "Qual horário você prefere?")\n`
     prompt += `   - Se a data informada pelo cliente NÃO estiver na lista: informe que aquela data não está disponível e mostre as datas disponíveis como alternativas\n`
