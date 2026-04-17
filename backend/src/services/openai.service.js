@@ -164,6 +164,35 @@ const agentTools = [
   {
     type: 'function',
     function: {
+      name: 'enviar_codigo_verificacao',
+      description: 'Envia um codigo de 6 digitos por WhatsApp para o numero informado pelo cliente, para confirmar que o numero pertence a ele. Use APOS o cliente informar o numero (em buscar_cliente ou cadastrar_cliente) e ANTES de criar_pedido. Se o numero ja foi verificado nos ultimos 30 dias, retorna success com alreadyVerified=true e NAO reenvia.',
+      parameters: {
+        type: 'object',
+        properties: {
+          phone: { type: 'string', description: 'Celular com DDD, apenas numeros (ex: 22998524209)' },
+        },
+        required: ['phone'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'verificar_codigo',
+      description: 'Verifica se o codigo de 6 digitos informado pelo cliente corresponde ao que foi enviado por enviar_codigo_verificacao. Use quando o cliente informar o codigo recebido.',
+      parameters: {
+        type: 'object',
+        properties: {
+          phone: { type: 'string', description: 'Mesmo celular usado em enviar_codigo_verificacao' },
+          codigo: { type: 'string', description: 'Codigo de 6 digitos informado pelo cliente' },
+        },
+        required: ['phone', 'codigo'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'consultar_agenda',
       description: 'Consulta as datas disponíveis na agenda do estabelecimento para entrega/retirada. Use APÓS o cliente informar a data desejada, para verificar se há disponibilidade naquele dia.',
       parameters: {
@@ -719,6 +748,22 @@ export class OpenAiService {
 
       case 'criar_pedido': {
         try {
+          // Verifica se o telefone do cliente esta confirmado por codigo
+          // (bloqueia pedidos de numeros nao validados)
+          if (args.customerPhone && isRedisReady()) {
+            const normPhone = normalizePhone(args.customerPhone)
+            try {
+              const confirmed = await redisClient.get(`zapcakes:verify:confirmed:${userId}:${normPhone}`)
+              if (!confirmed) {
+                return JSON.stringify({
+                  success: false,
+                  needsVerification: true,
+                  error: 'O numero do cliente ainda nao foi verificado. ANTES de criar o pedido, chame enviar_codigo_verificacao(phone) e peca ao cliente o codigo de 6 digitos, depois chame verificar_codigo(phone, codigo). So apos codigo correto, volte a chamar criar_pedido.',
+                })
+              }
+            } catch { /* noop — se Redis cair, permite */ }
+          }
+
           // Verifica disponibilidade na agenda antes de criar o pedido
           if (args.estimatedDeliveryDate) {
             const parsedDate = this._parseDeliveryDate(args.estimatedDeliveryDate)
@@ -1095,6 +1140,96 @@ export class OpenAiService {
         }
       }
 
+      case 'enviar_codigo_verificacao': {
+        const phone = normalizePhone(args.phone)
+        if (!phone || phone.length < 10) {
+          return JSON.stringify({ success: false, error: 'Numero invalido. Peca ao cliente o telefone com DDD.' })
+        }
+        // Ja verificado nos ultimos 30 dias?
+        if (isRedisReady()) {
+          try {
+            const confirmed = await redisClient.get(`zapcakes:verify:confirmed:${userId}:${phone}`)
+            if (confirmed) {
+              return JSON.stringify({
+                success: true,
+                alreadyVerified: true,
+                message: 'Numero ja verificado anteriormente. Nao precisa reenviar codigo. Pode seguir com o pedido.',
+              })
+            }
+          } catch { /* noop */ }
+        }
+        const code = String(Math.floor(100000 + Math.random() * 900000))
+        if (isRedisReady()) {
+          try {
+            await redisClient.set(`zapcakes:verify:pending:${userId}:${phone}`, code, 'EX', 600)
+          } catch { /* noop */ }
+        }
+        // No simulador (sem instanceName), retorna o codigo pra teste local
+        const instanceName = this._currentInstanceName
+        if (!instanceName) {
+          console.log(`[verify] codigo para ${phone}: ${code}`)
+          return JSON.stringify({
+            success: true,
+            sent: false,
+            simulator: true,
+            code,
+            message: `Modo simulador: o codigo seria ${code}. No WhatsApp real seria enviado. Peca ao cliente para informar este codigo.`,
+          })
+        }
+        try {
+          const formatted = phone.startsWith('55') ? phone : `55${phone}`
+          await evolutionApi.post(`/message/sendText/${instanceName}`, {
+            number: formatted,
+            text: `🔐 *Código de verificação*\n\nSeu código é: *${code}*\n\nInforme este código aqui no chat para confirmar seu número.\nValido por 10 minutos.`,
+          })
+          return JSON.stringify({
+            success: true,
+            message: 'Codigo de 6 digitos enviado por WhatsApp para o cliente. Peca ao cliente para informar o codigo recebido.',
+          })
+        } catch (err) {
+          return JSON.stringify({
+            success: false,
+            error: 'Falha ao enviar codigo por WhatsApp. Verifique o numero e tente novamente.',
+            details: err.response?.data?.message || err.message,
+          })
+        }
+      }
+
+      case 'verificar_codigo': {
+        const phone = normalizePhone(args.phone)
+        const codigo = String(args.codigo || '').replace(/\D/g, '')
+        if (!phone || !codigo || codigo.length !== 6) {
+          return JSON.stringify({ success: false, error: 'Numero ou codigo invalido. O codigo tem 6 digitos.' })
+        }
+        if (!isRedisReady()) {
+          // Fallback: sem Redis, marca como verificado (melhor esforco)
+          return JSON.stringify({ success: true, message: 'Verificado (modo sem cache).' })
+        }
+        try {
+          const stored = await redisClient.get(`zapcakes:verify:pending:${userId}:${phone}`)
+          if (!stored) {
+            return JSON.stringify({
+              success: false,
+              expired: true,
+              error: 'Codigo expirado ou nao enviado. Peca um novo codigo usando enviar_codigo_verificacao.',
+            })
+          }
+          if (stored !== codigo) {
+            return JSON.stringify({
+              success: false,
+              incorrect: true,
+              error: 'Codigo incorreto. Peca ao cliente para conferir. Se esqueceu, chame enviar_codigo_verificacao novamente.',
+            })
+          }
+          // OK — marca confirmado por 30 dias
+          await redisClient.set(`zapcakes:verify:confirmed:${userId}:${phone}`, '1', 'EX', 30 * 24 * 60 * 60)
+          await redisClient.del(`zapcakes:verify:pending:${userId}:${phone}`)
+          return JSON.stringify({ success: true, message: 'Numero verificado com sucesso! Pode prosseguir com o pedido.' })
+        } catch (err) {
+          return JSON.stringify({ success: false, error: 'Erro ao verificar codigo.', details: err.message })
+        }
+      }
+
       case 'consultar_agenda': {
         try {
           const today = new Date()
@@ -1463,6 +1598,17 @@ export class OpenAiService {
     prompt += `     📍 Endereço: Rua ..., Nº ..., Bairro ..., Cidade/UF, CEP ...\n`
     prompt += `     Está tudo correto?"\n`
     prompt += `   - Somente após confirmação, use a função "cadastrar_cliente"\n\n`
+
+    prompt += `### VERIFICAÇÃO DO NÚMERO DE TELEFONE (obrigatória)\n\n`
+    prompt += `Depois de identificar ou cadastrar o cliente, ANTES de seguir para a verificação de entrega, CONFIRME que o número pertence a ele:\n`
+    prompt += `- Chame a função "enviar_codigo_verificacao" passando o phone do cliente.\n`
+    prompt += `- Se o retorno incluir "alreadyVerified": true, NÃO peça código ao cliente — o número já foi verificado recentemente. Apenas informe "Número já verificado, obrigado!" e siga para a etapa de entrega.\n`
+    prompt += `- Se o retorno for success (sem alreadyVerified), diga ao cliente: "Enviei um código de 6 dígitos para o seu WhatsApp, pode me informar o código para confirmar que é você mesmo?" e aguarde o cliente responder com o código.\n`
+    prompt += `- Quando o cliente enviar o código, chame "verificar_codigo" passando phone + codigo.\n`
+    prompt += `  • Se success: agradeça e siga o fluxo de entrega.\n`
+    prompt += `  • Se expired=true: diga "o código expirou, vou gerar um novo" e chame enviar_codigo_verificacao de novo.\n`
+    prompt += `  • Se incorrect=true: diga "código incorreto, pode conferir e me enviar de novo?" (não gere novo a não ser que o cliente peça).\n`
+    prompt += `- NUNCA chame criar_pedido antes de ter obtido success em verificar_codigo (ou alreadyVerified=true). Se tentar, a função retorna needsVerification=true e você DEVE voltar a este passo.\n\n`
 
     prompt += `### VERIFICAÇÃO DE ENTREGA\n\n`
     prompt += `e) Use a função "verificar_entrega" para checar os tipos de entrega disponíveis\n`
