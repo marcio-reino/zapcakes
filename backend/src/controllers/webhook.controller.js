@@ -141,14 +141,11 @@ export class WebhookController {
   }
 
   async _processEvent(instanceName, payload, reply) {
-    console.log(`[webhook] event=${payload.event} instance=${instanceName} fromMe=${payload.data?.key?.fromMe} remoteJid=${payload.data?.key?.remoteJid}`)
-
     const instance = await prisma.instance.findUnique({
       where: { instanceName },
     })
 
     if (!instance) {
-      console.warn(`[webhook] instance nao encontrada no banco: ${instanceName}`)
       return { received: true }
     }
 
