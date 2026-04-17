@@ -41,6 +41,7 @@ export default function SuperadminSimulator() {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const scrollRef = useRef(null)
+  const inputRef = useRef(null)
 
   useEffect(() => {
     api.get('/superadmin/simulator/accounts')
@@ -52,6 +53,15 @@ export default function SuperadminSimulator() {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages, sending])
+
+  // Quando a resposta do agente chega (sending transiciona de true -> false),
+  // devolve o foco ao input apos 1s para o superadmin digitar a proxima msg
+  useEffect(() => {
+    if (!sending && selectedUserId) {
+      const t = setTimeout(() => inputRef.current?.focus(), 1000)
+      return () => clearTimeout(t)
+    }
+  }, [sending, selectedUserId])
 
   function handleAccountChange(value) {
     setSelectedUserId(value)
@@ -202,6 +212,7 @@ export default function SuperadminSimulator() {
         {/* Input */}
         <form onSubmit={handleSend} className="p-3 border-t border-gray-200 dark:border-gray-700 flex gap-2">
           <input
+            ref={inputRef}
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
