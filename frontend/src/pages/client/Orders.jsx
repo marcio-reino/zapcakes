@@ -11,6 +11,19 @@ import { FiCheckCircle, FiImage, FiFile, FiX, FiXCircle, FiTruck, FiDollarSign, 
 import { jsPDF } from 'jspdf'
 
 const BRL = (value) => Number(value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
+function formatBRLInput(value) {
+  const num = String(value).replace(/\D/g, '')
+  if (!num) return ''
+  const cents = (Number(num) / 100).toFixed(2)
+  return Number(cents).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+function parseBRLInput(formatted) {
+  if (!formatted) return 0
+  const num = String(formatted).replace(/\./g, '').replace(',', '.')
+  return parseFloat(num) || 0
+}
 const padId = (id) => String(id).padStart(5, '0')
 
 const statusLabels = {
@@ -139,7 +152,11 @@ export default function ClientOrders() {
     const depositPaid = order.depositAmount ? Number(order.depositAmount) : 0
     const expectedFinal = Number(order.total) - depositPaid
     setFinalPaymentModal({ ...order, expectedFinal })
-    setFinalPaymentValue(expectedFinal > 0 ? expectedFinal.toFixed(2) : '')
+    setFinalPaymentValue(
+      expectedFinal > 0
+        ? expectedFinal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : ''
+    )
     setFinalHasDivergence(false)
   }
 
@@ -1335,37 +1352,39 @@ export default function ClientOrders() {
                 </div>
 
                 <div>
-                  <label className="flex items-center gap-2 mb-2">
-                    <input
-                      type="checkbox"
-                      checked={finalHasDivergence}
-                      onChange={(e) => setFinalHasDivergence(e.target.checked)}
-                      className="rounded border-gray-300 text-pink-600 focus:ring-pink-500"
-                    />
+                  <div className="flex items-center justify-between mb-3">
                     <span className="text-sm text-gray-700 dark:text-gray-300">Divergência no valor recebido</span>
-                  </label>
+                    <div
+                      onClick={() => setFinalHasDivergence(!finalHasDivergence)}
+                      className={`relative w-11 h-6 rounded-full cursor-pointer transition-colors ${finalHasDivergence ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+                    >
+                      <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${finalHasDivergence ? 'translate-x-5' : ''}`} />
+                    </div>
+                  </div>
 
                   {finalHasDivergence && (
                     <div>
-                      <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Valor real recebido (R$)</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="Ex: 90.00"
-                        value={finalPaymentValue}
-                        onChange={(e) => setFinalPaymentValue(e.target.value)}
-                        className="w-full px-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-white focus:ring-2 focus:ring-pink-500 focus:border-transparent outline-none"
-                      />
+                      <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Valor real recebido</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 text-sm pointer-events-none">R$</span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          placeholder="0,00"
+                          value={finalPaymentValue}
+                          onChange={(e) => setFinalPaymentValue(formatBRLInput(e.target.value))}
+                          className="w-full pl-10 pr-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none"
+                        />
+                      </div>
                       {finalPaymentValue && (() => {
-                        const recv = Number(finalPaymentValue)
+                        const recv = parseBRLInput(finalPaymentValue)
                         const diff = expectedFinal - recv
                         if (Math.abs(diff) < 0.005) return null
                         return (
                           <p className={`text-xs mt-2 ${diff > 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
                             {diff > 0
-                              ? `Cliente pagou R$ ${diff.toFixed(2).replace('.', ',')} a menos`
-                              : `Cliente pagou R$ ${Math.abs(diff).toFixed(2).replace('.', ',')} a mais`}
+                              ? `Cliente pagou ${BRL(diff)} a menos`
+                              : `Cliente pagou ${BRL(Math.abs(diff))} a mais`}
                           </p>
                         )
                       })()}
@@ -1384,7 +1403,7 @@ export default function ClientOrders() {
                   onClick={() => {
                     const data = {}
                     if (finalHasDivergence && finalPaymentValue) {
-                      data.paymentAmount = Number(finalPaymentValue)
+                      data.paymentAmount = parseBRLInput(finalPaymentValue)
                       data.paymentDivergence = true
                     }
                     confirmPayment(finalPaymentModal.id, data)
