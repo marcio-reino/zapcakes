@@ -548,16 +548,47 @@ export class SuperadminController {
     // com number no body do create para obter pairingCode.
     if (normalizedPhone) {
       try {
-        // Best-effort: logout + delete. Se nao existir na Evolution, ignora.
-        try { await evolutionApi.delete(`/instance/logout/${instanceName}`) } catch { /* noop */ }
-        try { await evolutionApi.delete(`/instance/delete/${instanceName}`) } catch { /* noop */ }
+        // Best-effort: logout + delete. Sao idempotentes e podem retornar
+        // 400/404 dependendo do estado (nao conectado / nao existe). Ignora
+        // silenciosamente e segue pro create. Erros de rede/timeout escapam
+        // e caem no catch externo.
+        try { await evolutionApi.delete(`/instance/logout/${instanceName}`) } catch (e) {
+          const st = e?.response?.status
+          if (st && st !== 400 && st !== 404) {
+            console.warn('[connectWhatsapp] logout:', st, e?.response?.data?.message || e.message)
+          }
+        }
+        try { await evolutionApi.delete(`/instance/delete/${instanceName}`) } catch (e) {
+          const st = e?.response?.status
+          if (st && st !== 400 && st !== 404) {
+            console.warn('[connectWhatsapp] delete:', st, e?.response?.data?.message || e.message)
+          }
+        }
+        // Aguarda a Evolution efetivar o delete antes de criar novamente
+        await new Promise((r) => setTimeout(r, 400))
 
-        const { data } = await evolutionApi.post('/instance/create', {
+        const createWithNumber = async () => evolutionApi.post('/instance/create', {
           instanceName,
           integration: 'WHATSAPP-BAILEYS',
           qrcode: true,
           number: normalizedPhone,
         })
+
+        let data
+        try {
+          ({ data } = await createWithNumber())
+        } catch (e) {
+          const st = e?.response?.status
+          const msg = JSON.stringify(e?.response?.data || '')
+          // 403/409 => ja existe. Forca delete e retry uma vez.
+          if (st === 403 || st === 409 || msg.includes('already')) {
+            try { await evolutionApi.delete(`/instance/delete/${instanceName}`) } catch { /* noop */ }
+            await new Promise((r) => setTimeout(r, 600))
+            ;({ data } = await createWithNumber())
+          } else {
+            throw e
+          }
+        }
 
         const pairingCode = data?.qrcode?.pairingCode || data?.pairingCode || null
         const qrcode = data?.qrcode?.base64 || data?.base64 || null
@@ -572,6 +603,7 @@ export class SuperadminController {
         }
         return { qrcode, pairingCode, status: 'CONNECTING' }
       } catch (err) {
+        console.error('[connectWhatsapp] pairing code failed:', err?.response?.status, err?.response?.data || err.message)
         return reply.status(500).send({
           error: 'Erro ao gerar código de pareamento',
           details: err?.response?.data?.message || err?.response?.data?.response?.message || err.message,

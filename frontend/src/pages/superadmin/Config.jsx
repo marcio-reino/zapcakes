@@ -495,7 +495,12 @@ export default function Config() {
                   type="tel"
                   inputMode="numeric"
                   value={pairingPhone}
-                  onChange={(e) => setPairingPhone(e.target.value)}
+                  onChange={(e) => setPairingPhone(e.target.value.replace(/\D/g, ''))}
+                  onPaste={(e) => {
+                    e.preventDefault()
+                    const text = (e.clipboardData || window.clipboardData).getData('text') || ''
+                    setPairingPhone(text.replace(/\D/g, ''))
+                  }}
                   placeholder="Ex: 5521999999999"
                   disabled={waLoading}
                   autoFocus
