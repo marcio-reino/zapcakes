@@ -353,6 +353,8 @@ model Order {
   paymentConfirmed Boolean    @default(false) @map("payment_confirmed")
   depositAmount   Decimal?    @map("deposit_amount") @db.Decimal(10, 2)
   depositDivergence Boolean   @default(false) @map("deposit_divergence")
+  finalPaymentAmount Decimal? @map("final_payment_amount") @db.Decimal(10, 2)
+  finalPaymentDivergence Boolean @default(false) @map("final_payment_divergence")
   estimatedDeliveryDate String? @map("estimated_delivery_date") @db.VarChar(100)
   notes           String?     @db.Text
   internalNotes   String?     @map("internal_notes") @db.Text

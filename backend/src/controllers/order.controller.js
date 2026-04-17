@@ -274,18 +274,68 @@ export class OrderController {
       return reply.status(404).send({ error: 'Pedido não encontrado' })
     }
 
+    const { paymentAmount, paymentDivergence } = request.body || {}
+    const updateData = { paymentConfirmed: true, status: 'CONFIRMED' }
+
+    if (paymentAmount !== undefined && paymentAmount !== null) {
+      updateData.finalPaymentAmount = Number(paymentAmount)
+      updateData.finalPaymentDivergence = !!paymentDivergence
+    }
+
     const updated = await prisma.order.update({
       where: { id: Number(id) },
-      data: { paymentConfirmed: true, status: 'CONFIRMED' },
+      data: updateData,
       include: { items: { include: { product: true, attachments: true, additionals: true } } },
     })
 
+    // Mensagem de confirmacao final. Distingue divergencia e NAO repete o
+    // 'em breve iniciaremos a producao' — esse e o pagamento final, entao
+    // a producao ja pode estar em curso ou concluida. Foco em confirmar
+    // o recebimento integral e, se houver divergencia, avisar valores.
     if (order.remoteJid) {
-      await OrderController._sendWhatsApp(
-        request.user.id,
-        order.remoteJid,
-        `✅ *Pagamento integral confirmado!*\n\nPedido #${padNum(order.orderNumber)} confirmado. Em breve iniciaremos a produção! 🎂`
-      )
+      const code = padNum(order.orderNumber)
+      const fmt = (v) => Number(v).toFixed(2).replace('.', ',')
+
+      // Valor esperado do pagamento final:
+      // - Se ja houve reserva paga: total - depositAmount (saldo restante)
+      // - Se nao houve: valor total do pedido
+      const depositPaid = order.depositAmount != null ? Number(order.depositAmount) : 0
+      const expectedFinal = Number(order.total) - depositPaid
+
+      const hasReceived = updateData.finalPaymentAmount != null
+      const divergent = updateData.finalPaymentDivergence === true && hasReceived && expectedFinal > 0
+
+      let msg
+      if (divergent) {
+        const received = Number(updateData.finalPaymentAmount)
+        const diff = expectedFinal - received
+
+        if (Math.abs(diff) < 0.005) {
+          msg = `✅ *Pagamento integral confirmado!*\n\nPedido #${code}. Obrigado pela sua preferência! 🎂`
+        } else if (diff > 0) {
+          msg = `⚠️ *Pagamento final recebido com divergência*\n\n` +
+            `Pedido #${code}\n\n` +
+            `• Valor esperado (saldo restante): R$ ${fmt(expectedFinal)}\n` +
+            `• Valor recebido: R$ ${fmt(received)}\n` +
+            `• Diferença pendente: R$ ${fmt(diff)}\n\n` +
+            `Confirmamos o recebimento do seu pagamento, mas identificamos um valor abaixo do combinado.\n\n` +
+            `Por favor, entre em contato para regularizarmos a diferença de R$ ${fmt(diff)}.\n\n` +
+            `Qualquer dúvida, estou aqui! 🎂`
+        } else {
+          const extra = Math.abs(diff)
+          msg = `✅ *Pagamento final recebido com valor maior*\n\n` +
+            `Pedido #${code}\n\n` +
+            `• Valor esperado (saldo restante): R$ ${fmt(expectedFinal)}\n` +
+            `• Valor recebido: R$ ${fmt(received)}\n` +
+            `• Valor pago a mais: R$ ${fmt(extra)}\n\n` +
+            `Confirmamos o recebimento do seu pagamento. Identificamos um valor acima do combinado — entraremos em contato para devolver a diferença de R$ ${fmt(extra)}.\n\n` +
+            `Qualquer dúvida, estou aqui! 🎂`
+        }
+      } else {
+        msg = `✅ *Pagamento integral confirmado!*\n\nPedido #${code}. Obrigado pela sua preferência! 🎂`
+      }
+
+      await OrderController._sendWhatsApp(request.user.id, order.remoteJid, msg)
     }
 
     return updated

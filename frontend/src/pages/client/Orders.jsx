@@ -47,6 +47,9 @@ export default function ClientOrders() {
   const [depositModal, setDepositModal] = useState(null)
   const [manualDeposit, setManualDeposit] = useState('')
   const [hasDivergence, setHasDivergence] = useState(false)
+  const [finalPaymentModal, setFinalPaymentModal] = useState(null)
+  const [finalPaymentValue, setFinalPaymentValue] = useState('')
+  const [finalHasDivergence, setFinalHasDivergence] = useState(false)
   const [notifyCancel, setNotifyCancel] = useState(true)
   const [printOrder, setPrintOrder] = useState(null)
   const [filterDate, setFilterDate] = useState('')
@@ -119,14 +122,25 @@ export default function ClientOrders() {
     }
   }
 
-  async function confirmPayment(id) {
+  async function confirmPayment(id, paymentData = {}) {
     try {
-      await api.put(`/orders/${id}/confirm-payment`)
-      toast.success('Pagamento confirmado! Pedido confirmado.')
+      await api.put(`/orders/${id}/confirm-payment`, paymentData)
+      toast.success('Pagamento integral confirmado!')
+      setFinalPaymentModal(null)
+      setFinalPaymentValue('')
+      setFinalHasDivergence(false)
       loadOrders()
     } catch {
       toast.error('Erro ao confirmar pagamento')
     }
+  }
+
+  function openFinalPaymentModal(order) {
+    const depositPaid = order.depositAmount ? Number(order.depositAmount) : 0
+    const expectedFinal = Number(order.total) - depositPaid
+    setFinalPaymentModal({ ...order, expectedFinal })
+    setFinalPaymentValue(expectedFinal > 0 ? expectedFinal.toFixed(2) : '')
+    setFinalHasDivergence(false)
   }
 
   async function cancelOrder(id, notify = true) {
@@ -1078,7 +1092,7 @@ export default function ClientOrders() {
 
                 {order.proofVerified && !order.paymentConfirmed && order.status !== 'CANCELLED' && (
                   <button
-                    onClick={() => confirmPayment(order.id)}
+                    onClick={() => openFinalPaymentModal(order)}
                     className="flex items-center gap-1.5 text-sm md:text-xs px-4 md:px-3 py-3 md:py-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
                   >
                     <FiDollarSign size={12} /> Confirmar Pagamento Total
@@ -1286,6 +1300,104 @@ export default function ClientOrders() {
           </div>
         </div>
       )}
+
+      {/* Modal de confirmação de pagamento integral */}
+      {finalPaymentModal && (() => {
+        const depositPaid = finalPaymentModal.depositAmount ? Number(finalPaymentModal.depositAmount) : 0
+        const expectedFinal = finalPaymentModal.expectedFinal
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center">
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm animate-fadeIn" onClick={() => setFinalPaymentModal(null)} />
+            <div className="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden animate-slideDown">
+              <div className="flex items-center justify-between px-6 py-4 border-b bg-gray-50 dark:bg-gray-700 dark:border-gray-600">
+                <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Confirmar Pagamento Total - Pedido #{padId(finalPaymentModal.orderNumber)}</h2>
+                <button onClick={() => setFinalPaymentModal(null)} className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors">
+                  <FiX size={20} />
+                </button>
+              </div>
+              <div className="p-6 space-y-4">
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
+                    <p className="text-gray-500 dark:text-gray-400">Total do pedido</p>
+                    <p className="text-lg font-bold text-gray-800 dark:text-white">{BRL(finalPaymentModal.total)}</p>
+                  </div>
+                  <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
+                    <p className="text-gray-500 dark:text-gray-400">Reserva já paga</p>
+                    <p className="text-lg font-bold text-gray-800 dark:text-white">{BRL(depositPaid)}</p>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-lg border border-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 dark:border-emerald-700">
+                  <p className="text-sm text-emerald-700 dark:text-emerald-300">
+                    Saldo esperado (valor a receber agora):
+                  </p>
+                  <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">{BRL(expectedFinal)}</p>
+                </div>
+
+                <div>
+                  <label className="flex items-center gap-2 mb-2">
+                    <input
+                      type="checkbox"
+                      checked={finalHasDivergence}
+                      onChange={(e) => setFinalHasDivergence(e.target.checked)}
+                      className="rounded border-gray-300 text-pink-600 focus:ring-pink-500"
+                    />
+                    <span className="text-sm text-gray-700 dark:text-gray-300">Divergência no valor recebido</span>
+                  </label>
+
+                  {finalHasDivergence && (
+                    <div>
+                      <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Valor real recebido (R$)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="Ex: 90.00"
+                        value={finalPaymentValue}
+                        onChange={(e) => setFinalPaymentValue(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-white focus:ring-2 focus:ring-pink-500 focus:border-transparent outline-none"
+                      />
+                      {finalPaymentValue && (() => {
+                        const recv = Number(finalPaymentValue)
+                        const diff = expectedFinal - recv
+                        if (Math.abs(diff) < 0.005) return null
+                        return (
+                          <p className={`text-xs mt-2 ${diff > 0 ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
+                            {diff > 0
+                              ? `Cliente pagou R$ ${diff.toFixed(2).replace('.', ',')} a menos`
+                              : `Cliente pagou R$ ${Math.abs(diff).toFixed(2).replace('.', ',')} a mais`}
+                          </p>
+                        )
+                      })()}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="px-6 py-4 border-t bg-gray-50 dark:bg-gray-700 dark:border-gray-600 flex justify-end gap-3">
+                <button
+                  onClick={() => setFinalPaymentModal(null)}
+                  className="px-4 py-2.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => {
+                    const data = {}
+                    if (finalHasDivergence && finalPaymentValue) {
+                      data.paymentAmount = Number(finalPaymentValue)
+                      data.paymentDivergence = true
+                    }
+                    confirmPayment(finalPaymentModal.id, data)
+                  }}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+                >
+                  <FiCheckCircle size={16} /> Confirmar Pagamento
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Modal de confirmação de status */}
       {statusConfirm && (
