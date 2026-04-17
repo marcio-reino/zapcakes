@@ -1,7 +1,13 @@
 import prisma from '../config/database.js'
 import evolutionApi from '../config/evolution.js'
 import openai from '../config/openai.js'
+import { UploadService } from '../services/upload.service.js'
+import redisClient, { isRedisReady } from '../config/redis.js'
 // openAiService singleton importado abaixo
+
+const INSPIRATION_TTL_SEC = 60 * 60 // 1h para o cliente finalizar o pedido
+const INSPIRATION_KEY = (jid) => `zapcakes:inspiration:${jid}`
+const INSPIRATION_MAX = 10 // limite de imagens pendentes por conversa
 import { Readable } from 'stream'
 
 import openAiService from '../services/openai-instance.js'
@@ -119,6 +125,37 @@ async function getImageDataUrl(instanceName, messageId) {
   }
 }
 
+// Faz upload da imagem pro MinIO e guarda URL no Redis (cache de inspiracao).
+// Retorna { url } ou null se falhar. Nao bloqueia o fluxo em caso de erro.
+async function cacheInspirationImage(instanceName, messageId, remoteJid, mimetype = 'image/jpeg') {
+  try {
+    const base64 = await getMediaBase64(instanceName, messageId)
+    if (!base64) return null
+
+    const buffer = Buffer.from(base64, 'base64')
+    // Limita upload a 10MB
+    if (buffer.length > 10 * 1024 * 1024) return null
+
+    const { url } = await UploadService.uploadBuffer(buffer, mimetype, 'inspiracao')
+
+    if (isRedisReady()) {
+      const entry = JSON.stringify({ url, ts: Date.now() })
+      try {
+        // RPUSH + LTRIM + EXPIRE
+        await redisClient.rpush(INSPIRATION_KEY(remoteJid), entry)
+        await redisClient.ltrim(INSPIRATION_KEY(remoteJid), -INSPIRATION_MAX, -1)
+        await redisClient.expire(INSPIRATION_KEY(remoteJid), INSPIRATION_TTL_SEC)
+      } catch (redisErr) {
+        console.warn('[inspiracao] falha ao cachear no Redis:', redisErr.message)
+      }
+    }
+    return { url }
+  } catch (err) {
+    console.error('[inspiracao] erro ao fazer upload:', err.message)
+    return null
+  }
+}
+
 export class WebhookController {
   // Webhook global da Evolution API (WEBHOOK_GLOBAL_URL)
   async handleEvolutionGlobal(request, reply) {
@@ -190,6 +227,12 @@ export class WebhookController {
           if (imgDataUrl) {
             imageUrl = imgDataUrl
           }
+          // Em paralelo, faz upload pro MinIO e cacheia no Redis para associar
+          // ao pedido quando o agente chamar criar_pedido. Se for comprovante
+          // de pagamento, registrar_pagamento ja limpa essa lista.
+          const mimetype = message.message.imageMessage.mimetype || 'image/jpeg'
+          cacheInspirationImage(instanceName, message.key.id, remoteJid, mimetype)
+            .catch(err => console.error('[inspiracao] erro async:', err.message))
         } else if (message.message?.audioMessage) {
           // Transcreve áudio com Whisper
           const transcription = await transcribeAudio(instanceName, message.key.id)

@@ -20,6 +20,9 @@ const CONVERSATION_TTL_SEC = 30 * 60 // 30 minutos (s) para Redis EXPIRE
 const REDIS_KEY = (jid) => `zapcakes:conv:${jid}`
 const MAX_MESSAGES = 50
 
+// Cache de imagens de inspiracao enviadas via WhatsApp (populado pelo webhook)
+const INSPIRATION_KEY = (jid) => `zapcakes:inspiration:${jid}`
+
 // Cache temporário da última imagem recebida por jid (para comprovantes)
 const lastImageCache = new Map()
 
@@ -906,6 +909,44 @@ export class OpenAiService {
             await prisma.orderItemAdditional.createMany({ data: addonPayload })
           }
 
+          // Associa imagens de inspiracao enviadas pelo cliente no WhatsApp
+          // Sao consumidas em ordem, respeitando o maxInspirationImages de cada produto
+          if (this._currentRemoteJid && isRedisReady()) {
+            try {
+              const key = INSPIRATION_KEY(this._currentRemoteJid)
+              const raw = await redisClient.lrange(key, 0, -1)
+              if (raw && raw.length > 0) {
+                const images = raw.map((r) => { try { return JSON.parse(r) } catch { return null } }).filter(Boolean)
+                const attachmentPayload = []
+                let imgIdx = 0
+                for (const oi of order.items) {
+                  if (imgIdx >= images.length) break
+                  const prod = await prisma.product.findUnique({
+                    where: { id: oi.productId },
+                    select: { allowInspirationImages: true, maxInspirationImages: true },
+                  })
+                  if (!prod?.allowInspirationImages) continue
+                  const maxForProduct = prod.maxInspirationImages || 3
+                  const slotsForItem = Math.min(maxForProduct, images.length - imgIdx)
+                  for (let s = 0; s < slotsForItem; s++) {
+                    attachmentPayload.push({
+                      orderItemId: oi.id,
+                      imageUrl: images[imgIdx].url,
+                    })
+                    imgIdx++
+                  }
+                }
+                if (attachmentPayload.length > 0) {
+                  await prisma.orderItemAttachment.createMany({ data: attachmentPayload })
+                }
+                // Limpa a lista apos associar (evita reuso em pedido futuro)
+                await redisClient.del(key)
+              }
+            } catch (attErr) {
+              console.error('[inspiracao/criar_pedido] erro ao associar imagens:', attErr.message)
+            }
+          }
+
           // Incrementa contador na agenda se a data prevista existe
           if (args.estimatedDeliveryDate) {
             const parsedDate = this._parseDeliveryDate(args.estimatedDeliveryDate)
@@ -1167,6 +1208,14 @@ export class OpenAiService {
             lastImageCache.delete(this._currentRemoteJid)
           }
 
+          // Remove a ultima imagem da lista de inspiracao (era o comprovante,
+          // nao inspiracao). Evita que o comprovante vire anexo de pedido futuro.
+          if (this._currentRemoteJid && isRedisReady()) {
+            try {
+              await redisClient.rpop(INSPIRATION_KEY(this._currentRemoteJid))
+            } catch { /* silencioso */ }
+          }
+
           // Verifica divergência de valor do comprovante
           const expectedAmount = order.reservation ? Number(order.reservation) : Number(order.total)
           const proofAmount = args.proofAmount || null
@@ -1356,7 +1405,7 @@ export class OpenAiService {
     prompt += `2. Quando ele escolher a categoria, responda APENAS com o comando [MOSTRAR_PRODUTOS:NomeDaCategoria] - o sistema vai enviar as fotos dos produtos automaticamente\n`
     prompt += `3. Após as imagens serem enviadas, pergunte qual produto deseja e a quantidade\n`
     prompt += `4. Quando o cliente escolher um produto e quantidade, CONFIRME o item adicionado (ex: "Adicionei 2x Bolo de Chocolate - R$ 120,00")\n`
-    prompt += `   - Se o produto tiver a marcação "📷 Aceita imagens de inspiração" no catálogo, pergunte ao cliente: "Você gostaria de enviar imagens de inspiração/referência para esse produto? (fotos do tema, decoração, etc)". Se o cliente quiser enviar, peça as imagens (respeitando o máximo indicado no catálogo). Se não quiser, siga normalmente.\n`
+    prompt += `   - Se o produto tiver a marcação "📷 Aceita imagens de inspiração" no catálogo, pergunte ao cliente: "Você gostaria de enviar imagens de inspiração/referência para esse produto? (fotos do tema, decoração, etc)". Se o cliente quiser enviar, peça as imagens (respeitando o máximo indicado no catálogo). Se não quiser, siga normalmente. NÃO diga ao cliente que voce nao pode salvar imagens — o sistema anexa automaticamente todas as imagens enviadas durante a conversa ao pedido ao chamar criar_pedido. Apenas confirme ao cliente "recebi sua imagem!" e siga o fluxo.\n`
     prompt += `   - Se o produto listar uma seção "Adicionais disponíveis" logo abaixo dele no catálogo, PERGUNTE ao cliente se deseja incluir algum adicional, listando o nome e o preço de cada um. Se o cliente aceitar, registre os adicionais escolhidos no item (em "additionals" de criar_pedido, usando o nome exato do adicional). Se recusar ou o produto não tiver adicionais, siga normalmente.\n`
     prompt += `   - Se o cliente pedir para ver FOTO / EXEMPLO / IMAGEM de um adicional específico (ex.: "tem foto do recheio especial?", "como é a cobertura extra?"), responda APENAS com o comando [MOSTRAR_ADICIONAL:Nome do adicional] usando o nome exato do catálogo. O sistema enviará automaticamente a imagem cadastrada. NÃO escreva texto antes ou depois do comando.\n`
     prompt += `   - Depois pergunte se deseja mais algum produto\n`
