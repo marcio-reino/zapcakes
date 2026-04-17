@@ -99,8 +99,43 @@ export class EvoAgentController {
         }
       }
 
-      // Solicita QR code
-      const { data: qrData } = await evolutionApi.get(`/instance/connect/${instance.instanceName}`)
+      // Solicita QR code — se a instance existe no banco mas NAO existe no
+      // Evolution (ex: banco migrado de outro ambiente, ou instance deletada
+      // direto na Evolution), recria automaticamente.
+      let qrData
+      try {
+        const res = await evolutionApi.get(`/instance/connect/${instance.instanceName}`)
+        qrData = res.data
+      } catch (err) {
+        if (err.response?.status === 404) {
+          // Instance orfa — recria no Evolution com o mesmo nome
+          try {
+            const { data: created } = await evolutionApi.post('/instance/create', {
+              instanceName: instance.instanceName,
+              integration: 'WHATSAPP-BAILEYS',
+              qrcode: true,
+            })
+            await prisma.instance.update({
+              where: { id: instance.id },
+              data: {
+                instanceId: created?.instance?.instanceId || null,
+                status: 'CONNECTING',
+              },
+            })
+            // Se instance/create ja retornou o QR code, reutiliza; senao pede
+            if (created?.qrcode?.base64) {
+              qrData = created
+            } else {
+              const res2 = await evolutionApi.get(`/instance/connect/${instance.instanceName}`)
+              qrData = res2.data
+            }
+          } catch (recreateErr) {
+            throw new Error(`Falha ao recriar instance apos 404: ${recreateErr.response?.data?.error || recreateErr.message}`)
+          }
+        } else {
+          throw err
+        }
+      }
 
       await prisma.instance.update({
         where: { id: instance.id },
@@ -112,7 +147,11 @@ export class EvoAgentController {
         qrcode: qrData,
       }
     } catch (err) {
-      return reply.status(500).send({ error: 'Erro ao conectar WhatsApp', details: err.message })
+      console.error('[connectWhatsApp] erro:', err.message, err.response?.data || '')
+      return reply.status(500).send({
+        error: 'Erro ao conectar WhatsApp',
+        details: err.response?.data?.message || err.message,
+      })
     }
   }
 
