@@ -639,19 +639,28 @@ export class OrderController {
 
   // Helper para enviar mensagem WhatsApp via Evolution API
   static async _sendWhatsApp(userId, remoteJid, text) {
+    // JIDs sinteticos do simulador do superadmin comecam com 'sim' e nao
+    // sao numeros reais — Evolution retornaria 400. Skip silencioso para
+    // evitar log de erro confuso em testes.
+    if (!remoteJid || remoteJid.startsWith('sim')) {
+      console.log(`[WhatsApp] skip envio para JID sintetico/vazio: ${remoteJid}`)
+      return { skipped: true, reason: 'synthetic_jid' }
+    }
     try {
       const instance = await prisma.instance.findFirst({
         where: { userId, status: 'CONNECTED' },
       })
-      if (!instance) return
+      if (!instance) return { skipped: true, reason: 'no_connected_instance' }
 
       const number = remoteJid.replace('@s.whatsapp.net', '')
       await evolutionApi.post(`/message/sendText/${instance.instanceName}`, {
         number,
         text,
       })
+      return { sent: true }
     } catch (err) {
       console.error('Erro ao enviar mensagem WhatsApp:', err.message)
+      return { error: err.message }
     }
   }
 }
