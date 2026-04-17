@@ -34,8 +34,11 @@ export default function Config() {
   const [waPhone, setWaPhone] = useState('')
   const [waProfileName, setWaProfileName] = useState('')
   const [waQrCode, setWaQrCode] = useState(null)
+  const [waPairingCode, setWaPairingCode] = useState(null)
   const [waLoading, setWaLoading] = useState(false)
   const [qrModalOpen, setQrModalOpen] = useState(false)
+  const [pairingInputVisible, setPairingInputVisible] = useState(false)
+  const [pairingPhone, setPairingPhone] = useState('')
   const [disconnectModalOpen, setDisconnectModalOpen] = useState(false)
   const pollRef = useRef(null)
 
@@ -86,24 +89,42 @@ export default function Config() {
     }, 3000)
   }
 
-  async function handleConnect() {
+  async function handleConnect(phoneNumber = null) {
     setWaLoading(true)
     setWaQrCode(null)
+    setWaPairingCode(null)
     try {
-      const { data } = await api.post('/superadmin/whatsapp/connect', {})
+      const body = phoneNumber ? { phoneNumber } : {}
+      const { data } = await api.post('/superadmin/whatsapp/connect', body)
       const qr = data.qrcode
       if (qr) {
         const src = qr.startsWith('data:') ? qr : `data:image/png;base64,${qr}`
         setWaQrCode(src)
+      }
+      if (data.pairingCode) {
+        setWaPairingCode(data.pairingCode)
+      }
+      if (qr || data.pairingCode) {
         setWaStatus('CONNECTING')
         setQrModalOpen(true)
         startPolling()
+      } else {
+        toast.error('Evolution não retornou QR Code nem código de pareamento')
       }
     } catch (err) {
       toast.error(err.response?.data?.error || 'Erro ao conectar WhatsApp')
     } finally {
       setWaLoading(false)
     }
+  }
+
+  async function handleGeneratePairingCode() {
+    const digits = pairingPhone.replace(/\D/g, '')
+    if (digits.length < 10 || digits.length > 15) {
+      toast.error('Número inválido. Use formato DDI+DDD+número (ex: 5521999999999)')
+      return
+    }
+    await handleConnect(digits)
   }
 
   async function handleDisconnect() {
@@ -124,6 +145,10 @@ export default function Config() {
 
   function handleCloseQrModal() {
     setQrModalOpen(false)
+    setWaPairingCode(null)
+    setWaQrCode(null)
+    setPairingInputVisible(false)
+    setPairingPhone('')
   }
 
   async function handleSave(e) {
@@ -373,36 +398,114 @@ export default function Config() {
         <div className="flex flex-col items-center gap-5">
           <div className="flex items-center gap-2 p-3 w-full bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
             <FiLoader className="animate-spin text-yellow-600 flex-shrink-0" size={16} />
-            <p className="text-sm text-yellow-700 dark:text-yellow-400">Aguardando leitura do QR Code...</p>
+            <p className="text-sm text-yellow-700 dark:text-yellow-400">
+              {waPairingCode ? 'Aguardando confirmação no WhatsApp...' : 'Aguardando leitura do QR Code...'}
+            </p>
           </div>
 
-          {waQrCode ? (
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-              <img src={waQrCode} alt="QR Code WhatsApp" className="w-72 h-72" />
+          {waPairingCode ? (
+            <div className="w-full flex flex-col items-center gap-3">
+              <p className="text-sm text-gray-600 dark:text-gray-300">Digite este código no WhatsApp:</p>
+              <div className="px-6 py-4 bg-green-50 dark:bg-green-900/20 border-2 border-green-300 dark:border-green-700 rounded-xl">
+                <p className="text-4xl md:text-5xl font-mono font-bold tracking-[0.4em] text-green-700 dark:text-green-400 text-center select-all">
+                  {String(waPairingCode).replace(/^(.{4})(.{4})$/, '$1-$2')}
+                </p>
+              </div>
+              <div className="text-center space-y-1 mt-2">
+                <p className="text-sm text-gray-600 dark:text-gray-300 font-medium">Como conectar com código:</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  1. Abra o WhatsApp no celular<br />
+                  2. Toque em <strong>Dispositivos conectados</strong><br />
+                  3. Toque em <strong>Conectar dispositivo</strong><br />
+                  4. Toque em <strong>Conectar com número de telefone</strong><br />
+                  5. Digite o código acima
+                </p>
+              </div>
             </div>
+          ) : waQrCode ? (
+            <>
+              <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                <img src={waQrCode} alt="QR Code WhatsApp" className="w-72 h-72" />
+              </div>
+              <div className="text-center space-y-1">
+                <p className="text-sm text-gray-600 dark:text-gray-300 font-medium">Como conectar:</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  1. Abra o WhatsApp no celular<br />
+                  2. Toque em <strong>Dispositivos conectados</strong><br />
+                  3. Toque em <strong>Conectar dispositivo</strong><br />
+                  4. Aponte a câmera para o QR Code
+                </p>
+              </div>
+            </>
           ) : (
             <div className="w-72 h-72 flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded-xl">
               <FiLoader className="animate-spin text-gray-400" size={32} />
             </div>
           )}
 
-          <div className="text-center space-y-1">
-            <p className="text-sm text-gray-600 dark:text-gray-300 font-medium">Como conectar:</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              1. Abra o WhatsApp no celular<br />
-              2. Toque em <strong>Dispositivos conectados</strong><br />
-              3. Toque em <strong>Conectar dispositivo</strong><br />
-              4. Aponte a câmera para o QR Code
-            </p>
-          </div>
+          {/* Alternativa: código de pareamento */}
+          {!waPairingCode && (
+            <div className="w-full border-t border-gray-200 dark:border-gray-700 pt-4 flex flex-col items-center gap-2">
+              {pairingInputVisible ? (
+                <div className="w-full space-y-2">
+                  <label className="text-sm text-gray-600 dark:text-gray-300 block text-center">
+                    Digite o número do WhatsApp (DDI + DDD + número)
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="tel"
+                      inputMode="numeric"
+                      value={pairingPhone}
+                      onChange={(e) => setPairingPhone(e.target.value)}
+                      placeholder="Ex: 5521999999999"
+                      disabled={waLoading}
+                      className="flex-1 px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white text-sm outline-none focus:ring-2 focus:ring-green-500"
+                    />
+                    <button
+                      onClick={handleGeneratePairingCode}
+                      disabled={waLoading || !pairingPhone.trim()}
+                      className="px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium disabled:opacity-50"
+                    >
+                      {waLoading ? 'Gerando...' : 'Gerar código'}
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => { setPairingInputVisible(false); setPairingPhone('') }}
+                    className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 block mx-auto"
+                  >
+                    Voltar ao QR Code
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <button
+                    onClick={() => handleConnect()}
+                    disabled={waLoading}
+                    className="text-sm text-green-600 dark:text-green-400 hover:underline disabled:opacity-50"
+                  >
+                    {waLoading ? 'Gerando...' : 'Gerar novo QR Code'}
+                  </button>
+                  <button
+                    onClick={() => setPairingInputVisible(true)}
+                    disabled={waLoading}
+                    className="text-sm text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50"
+                  >
+                    Conectar com código (sem QR)
+                  </button>
+                </>
+              )}
+            </div>
+          )}
 
-          <button
-            onClick={handleConnect}
-            disabled={waLoading}
-            className="text-sm text-green-600 dark:text-green-400 hover:underline disabled:opacity-50"
-          >
-            {waLoading ? 'Gerando...' : 'Gerar novo QR Code'}
-          </button>
+          {waPairingCode && (
+            <button
+              onClick={() => { setWaPairingCode(null); handleConnect() }}
+              disabled={waLoading}
+              className="text-sm text-gray-500 dark:text-gray-400 hover:underline disabled:opacity-50"
+            >
+              Voltar ao QR Code
+            </button>
+          )}
         </div>
       </Modal>
 

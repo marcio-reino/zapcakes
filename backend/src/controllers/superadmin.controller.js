@@ -531,6 +531,10 @@ export class SuperadminController {
 
   async connectWhatsapp(request, reply) {
     const userId = request.user.id
+    // Body opcional: { phoneNumber } para gerar pairing code (8 digitos)
+    // em vez de QR. O numero deve vir com DDI+DDD+numero, apenas digitos
+    // (ex: 5521999999999).
+    const { phoneNumber } = request.body || {}
     let instance = await prisma.instance.findFirst({
       where: { instanceName: 'ZapCakes-System' },
     })
@@ -556,15 +560,19 @@ export class SuperadminController {
       })
     }
 
-    // Solicita QR code
+    // Solicita QR code (ou pairing code se phoneNumber foi informado)
     try {
-      const { data } = await evolutionApi.get(`/instance/connect/${instance.instanceName}`)
+      const normalizedPhone = phoneNumber ? String(phoneNumber).replace(/\D/g, '') : null
+      const path = normalizedPhone
+        ? `/instance/connect/${instance.instanceName}?number=${encodeURIComponent(normalizedPhone)}`
+        : `/instance/connect/${instance.instanceName}`
+      const { data } = await evolutionApi.get(path)
       await prisma.instance.update({ where: { id: instance.id }, data: { status: 'CONNECTING' } })
-      // Evolution API pode retornar base64 em diferentes caminhos
       const qrcode = data?.base64 || data?.qrcode?.base64 || data?.qrcode || null
-      return { qrcode, pairingCode: data?.pairingCode || null, status: 'CONNECTING' }
+      const pairingCode = data?.pairingCode || data?.qrcode?.pairingCode || null
+      return { qrcode, pairingCode, status: 'CONNECTING' }
     } catch (err) {
-      return reply.status(500).send({ error: 'Erro ao gerar QR Code' })
+      return reply.status(500).send({ error: 'Erro ao gerar código de conexão', details: err?.response?.data?.message || err.message })
     }
   }
 
