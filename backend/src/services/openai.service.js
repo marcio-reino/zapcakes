@@ -1164,32 +1164,39 @@ export class OpenAiService {
             await redisClient.set(`zapcakes:verify:pending:${userId}:${phone}`, code, 'EX', 600)
           } catch { /* noop */ }
         }
-        // No simulador (sem instanceName), retorna o codigo pra teste local
-        const instanceName = this._currentInstanceName
-        if (!instanceName) {
+        // Codigo SEMPRE enviado pela instancia do sistema (ZapCakes-System)
+        // para unificar a origem e nao depender da loja ter WhatsApp proprio.
+        const systemInstance = await prisma.instance.findFirst({
+          where: { instanceName: 'ZapCakes-System', status: 'CONNECTED' },
+        })
+
+        // No simulador ou quando sistema nao tem instance, retorna o codigo
+        // para facilitar teste
+        if (!systemInstance) {
           console.log(`[verify] codigo para ${phone}: ${code}`)
           return JSON.stringify({
             success: true,
             sent: false,
             simulator: true,
             code,
-            message: `Modo simulador: o codigo seria ${code}. No WhatsApp real seria enviado. Peca ao cliente para informar este codigo.`,
+            message: `Modo simulador/sistema sem WhatsApp: o codigo seria ${code}. Peca ao cliente para informar este codigo.`,
           })
         }
+
         try {
           const formatted = phone.startsWith('55') ? phone : `55${phone}`
-          await evolutionApi.post(`/message/sendText/${instanceName}`, {
+          await evolutionApi.post(`/message/sendText/${systemInstance.instanceName}`, {
             number: formatted,
-            text: `🔐 *Código de verificação*\n\nSeu código é: *${code}*\n\nInforme este código aqui no chat para confirmar seu número.\nValido por 10 minutos.`,
+            text: `🔐 *ZapCakes — Código de verificação*\n\nSeu código é: *${code}*\n\nInforme este código aqui no chat para confirmar seu número.\nVálido por 10 minutos.\n\n_Este código foi enviado pelo sistema ZapCakes para garantir a segurança do seu pedido._`,
           })
           return JSON.stringify({
             success: true,
-            message: 'Codigo de 6 digitos enviado por WhatsApp para o cliente. Peca ao cliente para informar o codigo recebido.',
+            message: 'Codigo de 6 digitos enviado por WhatsApp (pelo ZapCakes) ao cliente. Peca ao cliente para informar o codigo recebido.',
           })
         } catch (err) {
           return JSON.stringify({
             success: false,
-            error: 'Falha ao enviar codigo por WhatsApp. Verifique o numero e tente novamente.',
+            error: 'Falha ao enviar codigo por WhatsApp pelo ZapCakes. Verifique o numero e tente novamente.',
             details: err.response?.data?.message || err.message,
           })
         }
