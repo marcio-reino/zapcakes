@@ -138,50 +138,25 @@ export class OrderController {
     })
 
     // Envia notificação via WhatsApp quando o pedido é confirmado
-    if (status === 'CONFIRMED' && order.remoteJid) {
+    if (status === 'CONFIRMED') {
       const deliveryInfo = order.estimatedDeliveryDate
         ? `\n📅 *Previsão de entrega:* ${order.estimatedDeliveryDate}`
         : ''
       await OrderController._sendWhatsApp(
         request.user.id,
-        order.remoteJid,
+        order,
         `✅ *Pedido #${padNum(order.orderNumber)} Confirmado!*\n\nSeu pedido foi confirmado e logo será preparado para entrega! 🎂${deliveryInfo}`
       )
     }
 
     // Envia notificação via WhatsApp quando o pedido está pronto
     if (status === 'READY' && notifyCustomer) {
-      const phoneNumber = order.remoteJid
-        ? order.remoteJid.replace('@s.whatsapp.net', '')
-        : order.customerPhone ? order.customerPhone.replace(/\D/g, '') : null
-
-      if (phoneNumber) {
-        const whatsappNumber = phoneNumber.startsWith('55') ? phoneNumber : `55${phoneNumber}`
-        const deliveryInfo = order.deliveryType === 'ENTREGA'
-          ? '\n\n🚗 Em breve sairá para entrega!'
-          : '\n\n🏪 Já pode retirar no local!'
-        const msg = `🎉 *Pedido #${padNum(order.orderNumber)} está pronto!*\n\nSeu pedido ficou pronto e está esperando por você! 🧁${deliveryInfo}`
-
-        // Tenta instância do cliente, senão usa instância do sistema
-        let instance = await prisma.instance.findFirst({
-          where: { userId: request.user.id, status: 'CONNECTED' },
-        })
-        if (!instance) {
-          instance = await prisma.instance.findFirst({
-            where: { instanceName: 'ZapCakes-System', status: 'CONNECTED' },
-          })
-        }
-        if (instance) {
-          try {
-            await evolutionApi.post(`/message/sendText/${instance.instanceName}`, {
-              number: whatsappNumber,
-              text: msg,
-            })
-          } catch (err) {
-            console.error('[Notificação READY] Erro ao enviar WhatsApp:', err.message)
-          }
-        }
-      }
+      const deliveryInfo = order.deliveryType === 'ENTREGA'
+        ? '\n\n🚗 Em breve sairá para entrega!'
+        : '\n\n🏪 Já pode retirar no local!'
+      const msg = `🎉 *Pedido #${padNum(order.orderNumber)} está pronto!*\n\nSeu pedido ficou pronto e está esperando por você! 🧁${deliveryInfo}`
+      // Usa o mesmo fluxo padrao: resolve numero pelo customer_phone do pedido
+      await OrderController._sendWhatsApp(request.user.id, order, msg)
     }
 
     return updated
@@ -215,10 +190,10 @@ export class OrderController {
       include: { items: { include: { product: true, attachments: true, additionals: true } } },
     })
 
-    // Envia mensagem de confirmação via WhatsApp se tiver remoteJid.
+    // Envia mensagem de confirmação via WhatsApp para o numero do cliente.
     // Se houver divergência informada pelo operador, inclui detalhes do valor
     // esperado x recebido e a diferença (pendente ou excedente).
-    if (order.remoteJid) {
+    {
       const code = padNum(order.orderNumber)
       const fmt = (v) => Number(v).toFixed(2).replace('.', ',')
 
@@ -258,7 +233,7 @@ export class OrderController {
         msg = `✅ *Pagamento da reserva verificado!*\n\nPedido #${code} confirmado. Em breve iniciaremos a produção! 🎂`
       }
 
-      await OrderController._sendWhatsApp(request.user.id, order.remoteJid, msg)
+      await OrderController._sendWhatsApp(request.user.id, order, msg)
     }
 
     return updated
@@ -292,7 +267,7 @@ export class OrderController {
     // 'em breve iniciaremos a producao' — esse e o pagamento final, entao
     // a producao ja pode estar em curso ou concluida. Foco em confirmar
     // o recebimento integral e, se houver divergencia, avisar valores.
-    if (order.remoteJid) {
+    {
       const code = padNum(order.orderNumber)
       const fmt = (v) => Number(v).toFixed(2).replace('.', ',')
 
@@ -335,7 +310,7 @@ export class OrderController {
         msg = `✅ *Pagamento integral confirmado!*\n\nPedido #${code}. Obrigado pela sua preferência! 🎂`
       }
 
-      await OrderController._sendWhatsApp(request.user.id, order.remoteJid, msg)
+      await OrderController._sendWhatsApp(request.user.id, order, msg)
     }
 
     return updated
@@ -395,9 +370,9 @@ export class OrderController {
       }
     }
 
-    // Envia notificação de cancelamento via WhatsApp com dados de contato (se notify não for false)
+    // Envia notificação de cancelamento via WhatsApp (se notify não for false)
     const { notify } = request.body || {}
-    if (notify !== false && order.remoteJid) {
+    if (notify !== false) {
       const contactInfo = await OrderController._getContactInfo(request.user.id)
       let msg = `❌ *Pedido #${padNum(order.orderNumber)} Cancelado*\n\nSeu pedido foi cancelado pelo estabelecimento.`
       if (contactInfo) {
@@ -405,7 +380,7 @@ export class OrderController {
       } else {
         msg += `\n\nPara mais informações, entre em contato com o estabelecimento.`
       }
-      await OrderController._sendWhatsApp(request.user.id, order.remoteJid, msg)
+      await OrderController._sendWhatsApp(request.user.id, order, msg)
     }
 
     return updated
@@ -638,29 +613,46 @@ export class OrderController {
   }
 
   // Helper para enviar mensagem WhatsApp via Evolution API
-  static async _sendWhatsApp(userId, remoteJid, text) {
-    // JIDs sinteticos do simulador do superadmin comecam com 'sim' e nao
-    // sao numeros reais — Evolution retornaria 400. Skip silencioso para
-    // evitar log de erro confuso em testes.
-    if (!remoteJid || remoteJid.startsWith('sim')) {
-      console.log(`[WhatsApp] skip envio para JID sintetico/vazio: ${remoteJid}`)
-      return { skipped: true, reason: 'synthetic_jid' }
+  // Resolve o numero de WhatsApp para enviar notificacao. Prioriza o
+  // customerPhone cadastrado no pedido (sempre presente), cai pro remoteJid
+  // como fallback. Ignora JIDs sinteticos do simulador (prefixo 'sim').
+  // Sempre normaliza para formato E.164 brasileiro: apenas digitos com
+  // prefixo 55 (adicionado se nao existir).
+  static _resolveCustomerPhone(order) {
+    if (!order) return null
+    let raw = order.customerPhone || ''
+    if (!raw && order.remoteJid && !order.remoteJid.startsWith('sim')) {
+      raw = order.remoteJid.replace('@s.whatsapp.net', '')
+    }
+    const digits = String(raw).replace(/\D/g, '')
+    if (!digits) return null
+    return digits.startsWith('55') ? digits : `55${digits}`
+  }
+
+  // Envia uma mensagem WhatsApp para o cliente do pedido (usa customer_phone)
+  static async _sendWhatsApp(userId, order, text) {
+    const number = OrderController._resolveCustomerPhone(order)
+    if (!number) {
+      console.log('[WhatsApp] pedido sem numero do cliente valido — skip envio')
+      return { skipped: true, reason: 'no_customer_phone' }
     }
     try {
       const instance = await prisma.instance.findFirst({
         where: { userId, status: 'CONNECTED' },
       })
-      if (!instance) return { skipped: true, reason: 'no_connected_instance' }
+      if (!instance) {
+        console.log('[WhatsApp] nenhuma instance conectada para o userId', userId)
+        return { skipped: true, reason: 'no_connected_instance' }
+      }
 
-      const number = remoteJid.replace('@s.whatsapp.net', '')
       await evolutionApi.post(`/message/sendText/${instance.instanceName}`, {
         number,
         text,
       })
-      return { sent: true }
+      return { sent: true, number }
     } catch (err) {
-      console.error('Erro ao enviar mensagem WhatsApp:', err.message)
-      return { error: err.message }
+      console.error('[WhatsApp] erro ao enviar:', err.response?.data?.message || err.message, 'number=', number)
+      return { error: err.response?.data?.message || err.message }
     }
   }
 }
