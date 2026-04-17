@@ -1347,6 +1347,11 @@ export class SuperadminController {
           { type: 'image_url', image_url: { url: imageDataUrl } },
         ]
         await openAiService.addMessage(remoteJid, 'user', content)
+        // Popula o lastImageCache interno do openai.service para que
+        // registrar_pagamento consiga salvar como paymentProof (em producao
+        // isso e' feito dentro do chatWithImage; aqui chamamos direto
+        // processWithTools, entao precisa ser explicito).
+        openAiService.setLastImage(remoteJid, imageDataUrl)
       } else {
         await openAiService.addMessage(remoteJid, 'user', textContent)
       }

@@ -1742,6 +1742,14 @@ export class OpenAiService {
     return 0
   }
 
+  // Define manualmente a ultima imagem recebida (usado pelo simulador para
+  // popular o cache que o registrar_pagamento le ao salvar o comprovante).
+  // Em producao isso e' feito automaticamente no chatWithImage.
+  setLastImage(remoteJid, dataUrl) {
+    if (dataUrl) lastImageCache.set(remoteJid, dataUrl)
+    else lastImageCache.delete(remoteJid)
+  }
+
   // Limpa o histórico de uma conversa específica (usado pelo simulador)
   async resetConversation(remoteJid) {
     conversationCache.delete(remoteJid)
