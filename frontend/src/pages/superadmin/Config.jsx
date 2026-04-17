@@ -39,7 +39,9 @@ export default function Config() {
   const [qrModalOpen, setQrModalOpen] = useState(false)
   const [methodModalOpen, setMethodModalOpen] = useState(false)
   const [pairingInputVisible, setPairingInputVisible] = useState(false)
-  const [pairingPhone, setPairingPhone] = useState('')
+  const [pairingPhone, setPairingPhone] = useState(() => {
+    try { return localStorage.getItem('zapcakes_pairing_phone') || '' } catch { return '' }
+  })
   const [disconnectModalOpen, setDisconnectModalOpen] = useState(false)
   const pollRef = useRef(null)
 
@@ -149,7 +151,7 @@ export default function Config() {
     setWaPairingCode(null)
     setWaQrCode(null)
     setPairingInputVisible(false)
-    setPairingPhone('')
+    // Nao limpa pairingPhone — fica salvo em state+localStorage para proxima tentativa
   }
 
   async function handleSave(e) {
@@ -495,11 +497,17 @@ export default function Config() {
                   type="tel"
                   inputMode="numeric"
                   value={pairingPhone}
-                  onChange={(e) => setPairingPhone(e.target.value.replace(/\D/g, ''))}
+                  onChange={(e) => {
+                    const digits = e.target.value.replace(/\D/g, '')
+                    setPairingPhone(digits)
+                    try { localStorage.setItem('zapcakes_pairing_phone', digits) } catch { /* noop */ }
+                  }}
                   onPaste={(e) => {
                     e.preventDefault()
                     const text = (e.clipboardData || window.clipboardData).getData('text') || ''
-                    setPairingPhone(text.replace(/\D/g, ''))
+                    const digits = text.replace(/\D/g, '')
+                    setPairingPhone(digits)
+                    try { localStorage.setItem('zapcakes_pairing_phone', digits) } catch { /* noop */ }
                   }}
                   placeholder="Ex: 5521999999999"
                   disabled={waLoading}
@@ -515,7 +523,7 @@ export default function Config() {
                 </button>
               </div>
               <button
-                onClick={() => { setPairingInputVisible(false); setPairingPhone(''); handleConnect() }}
+                onClick={() => { setPairingInputVisible(false); handleConnect() }}
                 disabled={waLoading}
                 className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 block mx-auto"
               >
@@ -526,7 +534,7 @@ export default function Config() {
 
           {waPairingCode && (
             <button
-              onClick={() => { setWaPairingCode(null); setPairingInputVisible(false); setPairingPhone(''); handleConnect() }}
+              onClick={() => { setWaPairingCode(null); setPairingInputVisible(false); handleConnect() }}
               disabled={waLoading}
               className="text-sm text-gray-500 dark:text-gray-400 hover:underline disabled:opacity-50"
             >
@@ -548,7 +556,6 @@ export default function Config() {
             onClick={() => {
               setMethodModalOpen(false)
               setPairingInputVisible(false)
-              setPairingPhone('')
               setWaPairingCode(null)
               handleConnect()
             }}
@@ -573,7 +580,6 @@ export default function Config() {
               setMethodModalOpen(false)
               setWaQrCode(null)
               setWaPairingCode(null)
-              setPairingPhone('')
               setPairingInputVisible(true)
               setQrModalOpen(true)
             }}
