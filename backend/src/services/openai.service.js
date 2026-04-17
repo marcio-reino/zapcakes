@@ -150,12 +150,12 @@ const agentTools = [
     type: 'function',
     function: {
       name: 'consultar_pedido',
-      description: 'Consulta dados de um pedido pelo número do pedido ou pelo telefone do cliente. Use quando o cliente perguntar sobre status, valor, reserva ou qualquer informação do pedido.',
+      description: 'Consulta dados de um pedido. Se o cliente informar o numero do pedido (ex: "pedido 9", "#00012"), passe em orderNumber. Se informar so o telefone, use customerPhone e retorna o pedido mais recente. IMPORTANTE: use SEMPRE orderNumber quando o cliente mencionar um numero especifico — nao confunda com orderId (id interno).',
       parameters: {
         type: 'object',
         properties: {
-          orderId: { type: 'number', description: 'Número do pedido (ex: 123)' },
-          customerPhone: { type: 'string', description: 'Celular do cliente com DDD, apenas números (ex: 22998524209)' },
+          orderNumber: { type: 'number', description: 'Numero do pedido visivel ao cliente (ex: 9 para "pedido 9" ou 12 para "#00012"). Use sempre este campo quando o cliente citar um numero de pedido.' },
+          customerPhone: { type: 'string', description: 'Celular do cliente com DDD, apenas numeros (ex: 22998524209). Use quando o cliente nao informar o numero do pedido — retorna o mais recente.' },
         },
         required: [],
       },
@@ -1005,9 +1005,28 @@ export class OpenAiService {
       case 'consultar_pedido': {
         try {
           let order = null
-          if (args.orderId) {
+          // Prioridade: orderNumber (numero visivel ao cliente). Mantem orderId
+          // por compatibilidade caso o modelo envie esse campo legado.
+          if (args.orderNumber) {
             order = await prisma.order.findFirst({
-              where: { id: args.orderId, userId },
+              where: { orderNumber: Number(args.orderNumber), userId },
+              include: { items: { include: { product: true } } },
+            })
+            // Se nao achou por orderNumber + customerPhone (cliente tem mais de
+            // um pedido com esse numero entre contas distintas — improvavel) e
+            // passou telefone, tenta narrow
+            if (!order && args.customerPhone) {
+              const phone = normalizePhone(args.customerPhone)
+              const candidates = await prisma.order.findMany({
+                where: { userId, orderNumber: Number(args.orderNumber) },
+                include: { items: { include: { product: true } } },
+              })
+              order = candidates.find((o) => normalizePhone(o.customerPhone) === phone)
+            }
+          } else if (args.orderId) {
+            // Deprecated: aceita orderId antigo mas prefere orderNumber
+            order = await prisma.order.findFirst({
+              where: { id: Number(args.orderId), userId },
               include: { items: { include: { product: true } } },
             })
           } else if (args.customerPhone) {
@@ -1047,9 +1066,12 @@ export class OpenAiService {
             `${i.quantity}x ${i.product.name} - R$ ${(i.quantity * Number(i.price)).toFixed(2)}`
           )
 
+          const orderNumberPadded = String(order.orderNumber).padStart(5, '0')
           return JSON.stringify({
             found: true,
-            orderId: order.id,
+            // orderNumber e' o UNICO numero que deve ser mostrado ao cliente
+            orderNumber: order.orderNumber,
+            orderNumberFormatted: `#${orderNumberPadded}`,
             status: statusLabels[order.status] || order.status,
             customerName: order.customerName,
             customerPhone: order.customerPhone,
@@ -1064,6 +1086,8 @@ export class OpenAiService {
             notes: order.notes || null,
             estimatedDeliveryDate: order.estimatedDeliveryDate || null,
             createdAt: new Date(order.createdAt).toLocaleString('pt-BR'),
+            // NAO inclua orderId no retorno — e' id interno do banco e o
+            // modelo costumava confundir com o numero visivel do pedido
           })
         } catch (err) {
           console.error('Erro ao consultar pedido:', err.message)
@@ -1570,10 +1594,10 @@ export class OpenAiService {
 
     prompt += `### CONSULTA DE PEDIDO\n\n`
     prompt += `m) Quando o cliente perguntar sobre o status, valor, reserva ou qualquer dado de um pedido, use a função "consultar_pedido".\n`
-    prompt += `   - O cliente pode fornecer o número do pedido e/ou o número de celular\n`
-    prompt += `   - Se o cliente informar o número do pedido, passe "orderId"\n`
-    prompt += `   - Se informar o telefone, passe "customerPhone"\n`
+    prompt += `   - Se o cliente INFORMAR O NÚMERO do pedido (ex: "pedido 9", "#00012", "meu pedido 15"), passe ESSE número em "orderNumber". NUNCA passe so customerPhone nesse caso — buscar apenas por telefone retorna o pedido MAIS RECENTE, nao o que o cliente mencionou.\n`
+    prompt += `   - Se o cliente informar APENAS o telefone (sem numero do pedido), passe "customerPhone". Nesse caso, a funcao retorna o pedido mais recente — avise o cliente qual pedido voce encontrou e pergunte se e esse mesmo.\n`
     prompt += `   - Se não informar nenhum dos dois, peça o número do pedido ou o celular cadastrado\n`
+    prompt += `   - Ao mostrar o pedido ao cliente, use SEMPRE o campo "orderNumberFormatted" retornado (ex: "Pedido #00009"). NUNCA use orderId (esse campo nao existe mais no retorno, era id interno do banco e causava confusao — mostrar "#27" em vez de "#00009" por exemplo).\n`
     prompt += `   - Apresente as informações do pedido de forma clara e organizada\n`
     prompt += `   - Inclua a data prevista de entrega na resposta se disponível\n\n`
 
