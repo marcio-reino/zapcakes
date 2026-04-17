@@ -3,7 +3,7 @@ import api from '../../services/api.js'
 import toast from 'react-hot-toast'
 import Modal from '../../components/Modal.jsx'
 import ConfirmModal from '../../components/ConfirmModal.jsx'
-import { FiSave, FiLoader, FiWifi, FiWifiOff, FiGrid, FiHash, FiChevronRight } from 'react-icons/fi'
+import { FiSave, FiLoader, FiWifi, FiWifiOff, FiGrid, FiHash, FiChevronRight, FiCopy } from 'react-icons/fi'
 import { FaWhatsapp } from 'react-icons/fa'
 import { HiOutlineBuildingOffice2, HiOutlineCreditCard, HiOutlineGlobeAlt } from 'react-icons/hi2'
 
@@ -409,10 +409,28 @@ export default function Config() {
           {waPairingCode ? (
             <div className="w-full flex flex-col items-center gap-3">
               <p className="text-sm text-gray-600 dark:text-gray-300">Digite este código no WhatsApp:</p>
-              <div className="px-6 py-4 bg-green-50 dark:bg-green-900/20 border-2 border-green-300 dark:border-green-700 rounded-xl">
-                <p className="text-4xl md:text-5xl font-mono font-bold tracking-[0.4em] text-green-700 dark:text-green-400 text-center select-all">
-                  {String(waPairingCode).replace(/^(.{4})(.{4})$/, '$1-$2')}
-                </p>
+              <div className="flex items-center gap-2">
+                <div className="px-5 py-3 bg-green-50 dark:bg-green-900/20 border-2 border-green-300 dark:border-green-700 rounded-xl">
+                  <p className="text-2xl font-mono font-bold tracking-[0.25em] text-green-700 dark:text-green-400 text-center select-all whitespace-nowrap">
+                    {String(waPairingCode).replace(/^(.{4})(.{4})$/, '$1-$2')}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const code = String(waPairingCode).replace(/^(.{4})(.{4})$/, '$1-$2')
+                      await navigator.clipboard.writeText(code)
+                      toast.success('Código copiado!')
+                    } catch {
+                      toast.error('Não foi possível copiar')
+                    }
+                  }}
+                  className="p-3 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-xl transition-colors"
+                  title="Copiar código"
+                >
+                  <FiCopy size={18} />
+                </button>
               </div>
               <div className="text-center space-y-1 mt-2">
                 <p className="text-sm text-gray-600 dark:text-gray-300 font-medium">Como conectar com código:</p>
