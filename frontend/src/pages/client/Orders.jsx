@@ -816,11 +816,15 @@ export default function ClientOrders() {
               const s = order.estimatedDeliveryDate
               let orderDateStr = ''
               const isoMatch = s.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/)
-              const brMatch = s.match(/(\d{1,2})[/-](\d{1,2})[/-](\d{4})/)
+              const brFullMatch = s.match(/(\d{1,2})[/-](\d{1,2})[/-](\d{4})/)
+              const brShortMatch = s.match(/(?<!\d)(\d{1,2})[/-](\d{1,2})(?!\d|[/-]\d)/)
               if (isoMatch) {
                 orderDateStr = `${isoMatch[1]}-${isoMatch[2].padStart(2, '0')}-${isoMatch[3].padStart(2, '0')}`
-              } else if (brMatch) {
-                orderDateStr = `${brMatch[3]}-${brMatch[2].padStart(2, '0')}-${brMatch[1].padStart(2, '0')}`
+              } else if (brFullMatch) {
+                orderDateStr = `${brFullMatch[3]}-${brFullMatch[2].padStart(2, '0')}-${brFullMatch[1].padStart(2, '0')}`
+              } else if (brShortMatch) {
+                const currentYear = new Date().getFullYear()
+                orderDateStr = `${currentYear}-${brShortMatch[2].padStart(2, '0')}-${brShortMatch[1].padStart(2, '0')}`
               } else {
                 return false
               }
