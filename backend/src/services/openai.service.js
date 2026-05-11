@@ -1756,6 +1756,7 @@ export class OpenAiService {
 
     prompt += `IMPORTANTE:\n`
     prompt += `- Quando o cliente escolher uma categoria, responda SOMENTE com [MOSTRAR_PRODUTOS:NomeDaCategoria], sem nenhum texto antes ou depois\n`
+    prompt += `- NUNCA reenvie um catálogo (produtos ou combos) que já foi enviado nesta conversa. Se o histórico mostrar "(Catálogo ... já foi enviado ...)", o cliente JÁ viu as fotos. Em mensagens ambíguas ("ok", "?", "manda aí", etc.) NÃO emita [MOSTRAR_PRODUTOS:...] ou [MOSTRAR_COMBOS] de novo — pergunte qual produto e quantidade ele quer\n`
     prompt += `- SEMPRE peça o celular com DDD antes de fechar o pedido\n`
     prompt += `- SEMPRE busque o cliente na base antes de prosseguir\n`
     prompt += `- SEMPRE verifique o tipo de entrega disponível\n`
@@ -2034,22 +2035,35 @@ export class OpenAiService {
     return 'Desculpe, ocorreu um erro ao processar sua solicitação. Por favor, tente novamente.'
   }
 
-  // Processa comandos especiais na resposta do GPT e retorna { reply, handled }
+  // Processa comandos especiais na resposta do GPT e retorna { reply, handled, historyReply }
+  // historyReply: o que deve ser persistido no historico do assistente.
+  //   Quando o marker e' detectado, salvamos uma nota em linguagem natural
+  //   (sem colchetes) para que (a) o modelo nao re-emita o marker no proximo
+  //   turno por imitacao, e (b) se o modelo copiar a nota como texto, ela seja
+  //   factual e nao quebre a UX.
   async processCommands(reply, userId, instanceName, remoteJid) {
-    if (!instanceName) return { reply, handled: false }
+    if (!instanceName) return { reply, handled: false, historyReply: reply }
 
     // Comando: mostrar produtos de uma categoria
     const productMatch = reply.match(/\[MOSTRAR_PRODUTOS:(.+?)\]/)
     if (productMatch) {
       const categoryName = productMatch[1].trim()
       await this.sendProductImages(userId, instanceName, remoteJid, categoryName)
-      return { reply: `[Imagens dos produtos de ${categoryName} enviadas ao cliente]`, handled: true }
+      return {
+        reply: `[Imagens dos produtos de ${categoryName} enviadas ao cliente]`,
+        handled: true,
+        historyReply: `(Catálogo da categoria "${categoryName}" já foi enviado ao cliente em fotos com preço e descrição. Agora aguardo a escolha do produto e quantidade — NÃO reenviar este catálogo.)`,
+      }
     }
 
     // Comando: mostrar combos
     if (reply.includes('[MOSTRAR_COMBOS]')) {
       await this.sendComboImages(userId, instanceName, remoteJid)
-      return { reply: '[Imagens dos combos enviadas ao cliente]', handled: true }
+      return {
+        reply: '[Imagens dos combos enviadas ao cliente]',
+        handled: true,
+        historyReply: '(Catálogo de combos/promoções já foi enviado ao cliente em fotos. Agora aguardo a escolha — NÃO reenviar.)',
+      }
     }
 
     // Comando: mostrar foto de exemplo de um adicional
@@ -2057,30 +2071,36 @@ export class OpenAiService {
     if (additionalMatch) {
       const additionalName = additionalMatch[1].trim()
       await this.sendAdditionalImage(userId, instanceName, remoteJid, additionalName)
-      return { reply: `[Foto do adicional "${additionalName}" enviada ao cliente]`, handled: true }
+      return {
+        reply: `[Foto do adicional "${additionalName}" enviada ao cliente]`,
+        handled: true,
+        historyReply: `(Foto do adicional "${additionalName}" já foi enviada ao cliente — NÃO reenviar.)`,
+      }
     }
 
     // Comando: enviar anexo de instrução (pode ter texto junto)
     const attachmentMatches = reply.matchAll(/\[ENVIAR_ANEXO:(\d+)\]/g)
     let hasAttachment = false
     let textReply = reply
+    const attachmentIds = []
 
     for (const match of attachmentMatches) {
       hasAttachment = true
       const instructionId = match[1]
+      attachmentIds.push(instructionId)
       textReply = textReply.replace(match[0], '').trim()
       await this.sendAttachment(userId, instanceName, remoteJid, instructionId)
     }
 
     if (hasAttachment) {
-      // Se tinha texto além do comando, retorna o texto para ser enviado normalmente
+      const note = `(Anexo${attachmentIds.length > 1 ? 's' : ''} já enviado${attachmentIds.length > 1 ? 's' : ''} ao cliente — NÃO reenviar.)`
       if (textReply) {
-        return { reply: textReply, handled: false }
+        return { reply: textReply, handled: false, historyReply: `${textReply}\n${note}` }
       }
-      return { reply: '[Anexo enviado ao cliente]', handled: true }
+      return { reply: '[Anexo enviado ao cliente]', handled: true, historyReply: note }
     }
 
-    return { reply, handled: false }
+    return { reply, handled: false, historyReply: reply }
   }
 
   // Processa mensagem e retorna resposta da OpenAI
@@ -2099,12 +2119,13 @@ export class OpenAiService {
 
     const rawReply = await this.processWithTools(messages, userId, remoteJid, instanceName)
 
-    const { reply: processedReply, handled } = await this.processCommands(rawReply, userId, instanceName, remoteJid)
+    const { reply: processedReply, handled, historyReply } = await this.processCommands(rawReply, userId, instanceName, remoteJid)
 
-    // Persiste no historico a RESPOSTA ORIGINAL do modelo (com os markers).
-    // Salvar o placeholder '[Imagens dos produtos de X enviadas...]' fazia
-    // o modelo copiar esse texto no proximo turno em vez de emitir o marker.
-    await this.addMessage(remoteJid, 'assistant', rawReply)
+    // Persiste no historico a versao "history-friendly": markers como
+    // [MOSTRAR_PRODUTOS:X] sao trocados por uma nota em linguagem natural
+    // para que o modelo nao re-emita o marker em turnos seguintes (loop) nem
+    // copie um placeholder estranho para o cliente.
+    await this.addMessage(remoteJid, 'assistant', historyReply || rawReply)
     this.clearExpired()
 
     return handled ? null : processedReply
@@ -2134,10 +2155,10 @@ export class OpenAiService {
 
     const rawReply = await this.processWithTools(messages, userId, remoteJid, instanceName)
 
-    const { reply: processedReply, handled } = await this.processCommands(rawReply, userId, instanceName, remoteJid)
+    const { reply: processedReply, handled, historyReply } = await this.processCommands(rawReply, userId, instanceName, remoteJid)
 
-    // Persiste a resposta original do modelo (com markers), nao o placeholder.
-    await this.addMessage(remoteJid, 'assistant', rawReply)
+    // Markers no historico viram nota em linguagem natural (mesma logica do chat).
+    await this.addMessage(remoteJid, 'assistant', historyReply || rawReply)
     this.clearExpired()
 
     return handled ? null : processedReply
