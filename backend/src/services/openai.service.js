@@ -211,7 +211,7 @@ const agentTools = [
         type: 'object',
         properties: {
           customerPhone: { type: 'string', description: 'Celular do cliente com DDD para localizar o pedido' },
-          proofAmount: { type: 'number', description: 'Valor em reais identificado no comprovante de pagamento (ex: 33.00). Analise a imagem do comprovante e extraia o valor da transação.' },
+          proofAmount: { type: 'number', description: 'Valor MONETÁRIO em reais identificado no comprovante (ex: 96.00 para "R$ 96,00"). REGRA OBRIGATÓRIA: o valor SÓ pode vir de um campo rotulado explicitamente como "Valor pago", "Valor da transação", "Valor do PIX", "Valor transferido", "Total", "Valor" — sempre acompanhado de "R$" ou contexto de moeda. NUNCA extraia números de CPF, CNPJ, RG, agência, conta, ID/Transação, chave PIX, telefone, data, hora, ou qualquer outro identificador. Se você não conseguir localizar com certeza um campo de valor monetário rotulado, OMITA este parâmetro (não chute nem invente).' },
         },
         required: ['customerPhone'],
       },
@@ -1419,7 +1419,20 @@ export class OpenAiService {
 
           // Verifica divergência de valor do comprovante
           const expectedAmount = order.reservation ? Number(order.reservation) : Number(order.total)
-          const proofAmount = args.proofAmount || null
+          let proofAmount = args.proofAmount || null
+
+          // Sanity check: rejeita valores absurdos (modelo pode ter pego CPF/ID/conta
+          // por engano). Se proofAmount for >50x o esperado OU >R$ 100.000, descarta
+          // e trata como "nao foi possivel extrair" — equipe verifica manualmente.
+          if (proofAmount !== null) {
+            const tooHighAbsolute = proofAmount > 100000
+            const tooHighRelative = expectedAmount > 0 && proofAmount > expectedAmount * 50
+            if (tooHighAbsolute || tooHighRelative) {
+              console.warn('[registrar_pagamento] proofAmount descartado por valor implausivel:', { proofAmount, expectedAmount, orderId: order.id })
+              proofAmount = null
+            }
+          }
+
           let valueDivergent = false
           let divergenceMessage = ''
 
@@ -1767,8 +1780,14 @@ export class OpenAiService {
 
     prompt += `### RECEBIMENTO DO COMPROVANTE DE PAGAMENTO\n\n`
     prompt += `l) Quando o cliente enviar uma IMAGEM ou PDF de comprovante de pagamento (pix, transferência, depósito):\n`
-    prompt += `   1. PRIMEIRO: Analise a imagem do comprovante e identifique o VALOR da transação (valor do PIX/transferência)\n`
-    prompt += `   2. DEPOIS: Use a função "registrar_pagamento" passando o customerPhone E o proofAmount (valor identificado no comprovante)\n`
+    prompt += `   1. PRIMEIRO: Analise a imagem do comprovante e localize SOMENTE o campo de VALOR MONETÁRIO da transação. O campo costuma estar rotulado como "Valor pago", "Valor da transação", "Valor do PIX", "Valor transferido", "Total" ou "Valor", e SEMPRE acompanhado de "R$" (ex: "Valor pago: R$ 96,00").\n`
+    prompt += `      ATENÇÃO — NÃO confunda com outros números do comprovante:\n`
+    prompt += `      • CPF/CNPJ (ex: "***.473.597-**", "12.345.678/0001-90") — NUNCA é valor\n`
+    prompt += `      • Agência / Conta (ex: "Ag 2987 Cc 2099628-6") — NUNCA é valor\n`
+    prompt += `      • ID/Transação (ex: "E90400888202605071...") — NUNCA é valor\n`
+    prompt += `      • Chave PIX, telefone, data, hora — NUNCA são valor\n`
+    prompt += `      Se NÃO encontrar com certeza um campo rotulado de valor monetário com "R$", NÃO chute. Chame "registrar_pagamento" SEM o proofAmount (omita o parâmetro) — a equipe verificará manualmente.\n`
+    prompt += `   2. DEPOIS: Use a função "registrar_pagamento" passando o customerPhone E o proofAmount (valor identificado no comprovante). Lembre: proofAmount em reais (ex: 96.00, não 96 nem 9600).\n`
     prompt += `   - O sistema vai comparar automaticamente o valor do comprovante com o valor esperado da reserva\n`
     prompt += `   - Se o valor for DIVERGENTE, o sistema retornará uma mensagem para informar ao cliente que a equipe irá verificar\n`
     prompt += `   - Se o valor BATER, confirme que recebemos o comprovante normalmente\n`
