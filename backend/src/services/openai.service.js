@@ -254,7 +254,7 @@ export class OpenAiService {
     catalog += 'O sistema vai enviar uma LISTA EM TEXTO (sem fotos) com nome e preço de cada produto da categoria.\n'
     catalog += '\nQuando o cliente pedir a DESCRIÇÃO, FOTO, DETALHES de um produto OU ESCOLHER um produto específico, responda APENAS com:\n'
     catalog += '[MOSTRAR_PRODUTO:NomeDoProduto]\n'
-    catalog += 'O sistema vai enviar a FOTO do produto junto com nome, preço, mínimo/máximo de pedido e descrição completa. Depois disso, pergunte a quantidade desejada (caso ainda não tenha sido informada).\n\n'
+    catalog += 'O sistema vai enviar a FOTO do produto junto com nome, preço, mínimo/máximo e descrição. EM SEGUIDA o sistema envia AUTOMATICAMENTE as fotos de TODOS os adicionais disponíveis para esse produto (se houver), uma a uma, com nome e preço. Depois disso, pergunte ao cliente a quantidade desejada E se ele quer algum dos adicionais que viu nas fotos.\n\n'
     catalog += 'Se o cliente escolher Combos/Promoções, responda APENAS com o comando:\n'
     catalog += '[MOSTRAR_COMBOS]\n\n'
     catalog += 'O sistema vai enviar automaticamente as imagens dos combos com preços.\n\n'
@@ -461,6 +461,54 @@ export class OpenAiService {
         number,
         text: `${caption}\n\n_(sem foto cadastrada)_`,
       })
+    }
+
+    // Apos enviar o produto, envia automaticamente as fotos dos adicionais
+    // disponiveis para ele -- assim o cliente decide quais adicionar antes
+    // de fechar o pedido.
+    const productAdditionals = await prisma.productAdditional.findMany({
+      where: {
+        productId: product.id,
+        additional: { active: true },
+      },
+      include: { additional: true },
+      orderBy: { sortOrder: 'asc' },
+    })
+
+    if (productAdditionals.length > 0) {
+      await this.sendTyping(instanceName, remoteJid)
+      await evolutionApi.post(`/message/sendText/${instanceName}`, {
+        number,
+        text: `📋 *Adicionais disponíveis para ${product.name}* (opcionais — você escolhe quais quer):`,
+      })
+
+      for (const pa of productAdditionals) {
+        const addon = pa.additional
+        const addonPrice = Number(addon.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+        const addonCaption = `*${addon.description}*\n+ ${addonPrice}`
+
+        await this.sendTyping(instanceName, remoteJid)
+        if (addon.imageUrl) {
+          try {
+            await evolutionApi.post(`/message/sendMedia/${instanceName}`, {
+              number,
+              mediatype: 'image',
+              media: addon.imageUrl,
+              caption: addonCaption,
+            })
+          } catch {
+            await evolutionApi.post(`/message/sendText/${instanceName}`, {
+              number,
+              text: addonCaption,
+            })
+          }
+        } else {
+          await evolutionApi.post(`/message/sendText/${instanceName}`, {
+            number,
+            text: `${addonCaption}\n_(sem foto cadastrada)_`,
+          })
+        }
+      }
     }
   }
 
@@ -1617,7 +1665,7 @@ export class OpenAiService {
     prompt += `Siga este fluxo ao atender o cliente:\n\n`
     prompt += `1. Quando o cliente perguntar sobre produtos, mostre as CATEGORIAS numeradas (1. Bolos, 2. Doces, etc.)\n`
     prompt += `2. Quando ele escolher a categoria, responda APENAS com o comando [MOSTRAR_PRODUTOS:NomeDaCategoria] - o sistema vai enviar uma LISTA EM TEXTO (sem fotos) com nome e preço de cada produto da categoria\n`
-    prompt += `2a. Quando o cliente pedir descrição, foto ou detalhe de um produto, OU escolher um produto específico, responda APENAS com [MOSTRAR_PRODUTO:NomeDoProduto] - o sistema vai enviar a foto + dados completos (preço, min/max, descrição). Em seguida, pergunte a quantidade se ainda não souber.\n`
+    prompt += `2a. Quando o cliente pedir descrição, foto ou detalhe de um produto, OU escolher um produto específico, responda APENAS com [MOSTRAR_PRODUTO:NomeDoProduto] - o sistema envia a foto + dados completos (preço, min/max, descrição) E EM SEGUIDA envia automaticamente as fotos de TODOS os adicionais disponíveis pra esse produto. Em seguida, pergunte a quantidade E se ele quer algum adicional dos que apareceram.\n`
     prompt += `3. Após as imagens serem enviadas, pergunte qual produto deseja e a quantidade\n`
     prompt += `4. Quando o cliente escolher um produto e quantidade, CONFIRME o item adicionado (ex: "Adicionei 2x Bolo de Chocolate - R$ 120,00")\n`
     prompt += `   - Se o produto tiver a marcação "📷 Aceita imagens de inspiração" no catálogo, pergunte ao cliente: "Você gostaria de enviar imagens de inspiração/referência para esse produto? (fotos do tema, decoração, etc)". Se o cliente quiser enviar, peça as imagens (respeitando o máximo indicado no catálogo). Se não quiser, siga normalmente. NÃO diga ao cliente que voce nao pode salvar imagens — o sistema anexa automaticamente todas as imagens enviadas durante a conversa ao pedido ao chamar criar_pedido. Apenas confirme ao cliente "recebi sua imagem!" e siga o fluxo.\n`
@@ -2112,7 +2160,7 @@ export class OpenAiService {
       return {
         reply: `[Detalhe do produto "${productName}" enviado ao cliente]`,
         handled: true,
-        historyReply: `(Foto e descrição completa do produto "${productName}" já foram enviadas ao cliente. Aguardo a quantidade — NÃO reenviar.)`,
+        historyReply: `(Foto e descrição completa do produto "${productName}" já foram enviadas ao cliente, junto com as fotos dos adicionais disponíveis para esse produto. Aguardo a quantidade e a escolha de adicionais — NÃO reenviar foto do produto nem fotos de adicionais.)`,
       }
     }
 
