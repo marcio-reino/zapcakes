@@ -251,10 +251,13 @@ export class OpenAiService {
 
     catalog += '\nApós o cliente escolher uma categoria de produto, você DEVE responder APENAS com o comando:\n'
     catalog += '[MOSTRAR_PRODUTOS:NomeDaCategoria]\n\n'
+    catalog += 'O sistema vai enviar uma LISTA EM TEXTO (sem fotos) com nome e preço de cada produto da categoria.\n'
+    catalog += '\nQuando o cliente pedir a DESCRIÇÃO, FOTO, DETALHES de um produto OU ESCOLHER um produto específico, responda APENAS com:\n'
+    catalog += '[MOSTRAR_PRODUTO:NomeDoProduto]\n'
+    catalog += 'O sistema vai enviar a FOTO do produto junto com nome, preço, mínimo/máximo de pedido e descrição completa. Depois disso, pergunte a quantidade desejada (caso ainda não tenha sido informada).\n\n'
     catalog += 'Se o cliente escolher Combos/Promoções, responda APENAS com o comando:\n'
     catalog += '[MOSTRAR_COMBOS]\n\n'
-    catalog += 'O sistema vai enviar automaticamente as imagens dos produtos/combos com preços.\n'
-    catalog += 'Após enviar as imagens, pergunte qual produto o cliente deseja e a quantidade.\n\n'
+    catalog += 'O sistema vai enviar automaticamente as imagens dos combos com preços.\n\n'
 
     catalog += 'Lista completa de categorias e produtos (para referência de preços):\n\n'
 
@@ -365,7 +368,9 @@ export class OpenAiService {
     }
   }
 
-  // Envia produtos de uma categoria como imagens individuais no WhatsApp
+  // Envia a lista de produtos de uma categoria como UMA mensagem de texto
+  // (sem imagens). A imagem so e' enviada quando o cliente pedir detalhe
+  // ou escolher um produto -- ai usa sendProductDetail.
   async sendProductImages(userId, instanceName, remoteJid, categoryName) {
     const number = remoteJid.replace('@s.whatsapp.net', '')
 
@@ -391,42 +396,72 @@ export class OpenAiService {
       return
     }
 
-    for (const product of category.products) {
+    const lines = [`*${category.name}*`, '']
+    category.products.forEach((product, i) => {
       const price = Number(product.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-      let caption = `*${product.name}*\n${price}`
-      if (product.minOrder > 1) caption += `\n📦 Pedido mínimo: ${product.minOrder} unidades`
-      if (product.maxOrder && product.maxOrder < 500) caption += `\n📦 Pedido máximo: ${product.maxOrder} unidades`
-      if (product.description) caption += `\n\n${product.description}`
+      lines.push(`${i + 1}. *${product.name}* — ${price}`)
+    })
+    lines.push('')
+    lines.push('Me diga qual produto você quer pedir (ou peça a descrição/foto de algum) e a quantidade. 😊')
 
-      await this.sendTyping(instanceName, remoteJid)
+    await this.sendTyping(instanceName, remoteJid)
+    await evolutionApi.post(`/message/sendText/${instanceName}`, {
+      number,
+      text: lines.join('\n'),
+    })
+  }
 
-      if (product.imageUrl) {
-        try {
-          await evolutionApi.post(`/message/sendMedia/${instanceName}`, {
-            number,
-            mediatype: 'image',
-            media: product.imageUrl,
-            caption,
-          })
-        } catch {
-          await evolutionApi.post(`/message/sendText/${instanceName}`, {
-            number,
-            text: caption,
-          })
-        }
-      } else {
+  // Envia detalhe completo de UM produto (foto + nome + preco + min/max + descricao)
+  async sendProductDetail(userId, instanceName, remoteJid, productName) {
+    const number = remoteJid.replace('@s.whatsapp.net', '')
+    const termo = String(productName || '').trim()
+    const lower = termo.toLowerCase()
+
+    const candidates = await prisma.product.findMany({
+      where: { userId, active: true },
+    })
+    const product =
+      candidates.find((p) => p.name.toLowerCase() === lower) ||
+      candidates.find((p) => p.name.toLowerCase().includes(lower)) ||
+      candidates.find((p) => lower.includes(p.name.toLowerCase())) ||
+      null
+
+    if (!product) {
+      await evolutionApi.post(`/message/sendText/${instanceName}`, {
+        number,
+        text: `Não encontrei um produto com o nome "${termo}". Me diga o nome exato.`,
+      })
+      return
+    }
+
+    const price = Number(product.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+    let caption = `*${product.name}*\n${price}`
+    if (product.minOrder > 1) caption += `\n📦 Pedido mínimo: ${product.minOrder} unidades`
+    if (product.maxOrder && product.maxOrder < 500) caption += `\n📦 Pedido máximo: ${product.maxOrder} unidades`
+    if (product.description) caption += `\n\n${product.description}`
+
+    await this.sendTyping(instanceName, remoteJid)
+
+    if (product.imageUrl) {
+      try {
+        await evolutionApi.post(`/message/sendMedia/${instanceName}`, {
+          number,
+          mediatype: 'image',
+          media: product.imageUrl,
+          caption,
+        })
+      } catch {
         await evolutionApi.post(`/message/sendText/${instanceName}`, {
           number,
           text: caption,
         })
       }
+    } else {
+      await evolutionApi.post(`/message/sendText/${instanceName}`, {
+        number,
+        text: `${caption}\n\n_(sem foto cadastrada)_`,
+      })
     }
-
-    await this.sendTyping(instanceName, remoteJid)
-    await evolutionApi.post(`/message/sendText/${instanceName}`, {
-      number,
-      text: `Esses são os nossos produtos de *${category.name}*! 😊\n\nQual produto você gostaria de pedir e em que quantidade?`,
-    })
   }
 
   // Envia a foto de exemplo de um adicional pelo WhatsApp
@@ -1568,7 +1603,8 @@ export class OpenAiService {
     prompt += `\n\n## FLUXO DE PEDIDO\n\n`
     prompt += `Siga este fluxo ao atender o cliente:\n\n`
     prompt += `1. Quando o cliente perguntar sobre produtos, mostre as CATEGORIAS numeradas (1. Bolos, 2. Doces, etc.)\n`
-    prompt += `2. Quando ele escolher a categoria, responda APENAS com o comando [MOSTRAR_PRODUTOS:NomeDaCategoria] - o sistema vai enviar as fotos dos produtos automaticamente\n`
+    prompt += `2. Quando ele escolher a categoria, responda APENAS com o comando [MOSTRAR_PRODUTOS:NomeDaCategoria] - o sistema vai enviar uma LISTA EM TEXTO (sem fotos) com nome e preço de cada produto da categoria\n`
+    prompt += `2a. Quando o cliente pedir descrição, foto ou detalhe de um produto, OU escolher um produto específico, responda APENAS com [MOSTRAR_PRODUTO:NomeDoProduto] - o sistema vai enviar a foto + dados completos (preço, min/max, descrição). Em seguida, pergunte a quantidade se ainda não souber.\n`
     prompt += `3. Após as imagens serem enviadas, pergunte qual produto deseja e a quantidade\n`
     prompt += `4. Quando o cliente escolher um produto e quantidade, CONFIRME o item adicionado (ex: "Adicionei 2x Bolo de Chocolate - R$ 120,00")\n`
     prompt += `   - Se o produto tiver a marcação "📷 Aceita imagens de inspiração" no catálogo, pergunte ao cliente: "Você gostaria de enviar imagens de inspiração/referência para esse produto? (fotos do tema, decoração, etc)". Se o cliente quiser enviar, peça as imagens (respeitando o máximo indicado no catálogo). Se não quiser, siga normalmente. NÃO diga ao cliente que voce nao pode salvar imagens — o sistema anexa automaticamente todas as imagens enviadas durante a conversa ao pedido ao chamar criar_pedido. Apenas confirme ao cliente "recebi sua imagem!" e siga o fluxo.\n`
@@ -1755,8 +1791,9 @@ export class OpenAiService {
     prompt += `   - Inclua a data prevista de entrega na resposta se disponível\n\n`
 
     prompt += `IMPORTANTE:\n`
-    prompt += `- Quando o cliente escolher uma categoria, responda SOMENTE com [MOSTRAR_PRODUTOS:NomeDaCategoria], sem nenhum texto antes ou depois\n`
-    prompt += `- NUNCA reenvie um catálogo (produtos ou combos) que já foi enviado nesta conversa. Se o histórico mostrar "(Catálogo ... já foi enviado ...)", o cliente JÁ viu as fotos. Em mensagens ambíguas ("ok", "?", "manda aí", etc.) NÃO emita [MOSTRAR_PRODUTOS:...] ou [MOSTRAR_COMBOS] de novo — pergunte qual produto e quantidade ele quer\n`
+    prompt += `- Quando o cliente escolher uma categoria, responda SOMENTE com [MOSTRAR_PRODUTOS:NomeDaCategoria], sem nenhum texto antes ou depois (o sistema envia a lista em texto, sem fotos)\n`
+    prompt += `- Quando o cliente pedir descrição/foto/detalhe de um produto OU escolher um produto, responda SOMENTE com [MOSTRAR_PRODUTO:NomeDoProduto] (no SINGULAR, sem o "S" do final). O sistema envia a foto + dados completos. Só depois pergunte a quantidade.\n`
+    prompt += `- NUNCA reenvie uma lista ou foto que já foi enviada nesta conversa. Se o histórico mostrar "(Lista ... já foi enviada ...)" ou "(Foto ... já foi enviada ...)", o cliente JÁ viu. Em mensagens ambíguas ("ok", "?", "manda aí", etc.) NÃO emita [MOSTRAR_PRODUTOS:...], [MOSTRAR_PRODUTO:...] ou [MOSTRAR_COMBOS] de novo — pergunte qual produto e quantidade ele quer\n`
     prompt += `- SEMPRE peça o celular com DDD antes de fechar o pedido\n`
     prompt += `- SEMPRE busque o cliente na base antes de prosseguir\n`
     prompt += `- SEMPRE verifique o tipo de entrega disponível\n`
@@ -2044,15 +2081,29 @@ export class OpenAiService {
   async processCommands(reply, userId, instanceName, remoteJid) {
     if (!instanceName) return { reply, handled: false, historyReply: reply }
 
-    // Comando: mostrar produtos de uma categoria
+    // Comando: detalhe de UM produto (foto + nome + preco + min/max + descricao)
+    // Checado ANTES do plural para evitar ambiguidade na ordem (regexes nao
+    // colidem porque "_PRODUTO:" e "_PRODUTOS:" sao distintos, mas seguranca extra).
+    const productDetailMatch = reply.match(/\[MOSTRAR_PRODUTO:(.+?)\]/)
+    if (productDetailMatch) {
+      const productName = productDetailMatch[1].trim()
+      await this.sendProductDetail(userId, instanceName, remoteJid, productName)
+      return {
+        reply: `[Detalhe do produto "${productName}" enviado ao cliente]`,
+        handled: true,
+        historyReply: `(Foto e descrição completa do produto "${productName}" já foram enviadas ao cliente. Aguardo a quantidade — NÃO reenviar.)`,
+      }
+    }
+
+    // Comando: mostrar lista (texto) de produtos de uma categoria
     const productMatch = reply.match(/\[MOSTRAR_PRODUTOS:(.+?)\]/)
     if (productMatch) {
       const categoryName = productMatch[1].trim()
       await this.sendProductImages(userId, instanceName, remoteJid, categoryName)
       return {
-        reply: `[Imagens dos produtos de ${categoryName} enviadas ao cliente]`,
+        reply: `[Lista de produtos de ${categoryName} enviada ao cliente]`,
         handled: true,
-        historyReply: `(Catálogo da categoria "${categoryName}" já foi enviado ao cliente em fotos com preço e descrição. Agora aguardo a escolha do produto e quantidade — NÃO reenviar este catálogo.)`,
+        historyReply: `(Lista (em texto, sem fotos) da categoria "${categoryName}" já foi enviada ao cliente, com nome e preço de cada produto. Se o cliente pedir descrição/foto de algum, emita [MOSTRAR_PRODUTO:NomeDoProduto]. NÃO reenviar esta lista.)`,
       }
     }
 
