@@ -537,7 +537,15 @@ export class StoreController {
   async updateMyOrder(request, reply) {
     const orderId = Number(request.params.id)
     const { customerId, userId } = request.customer
-    const { items, notes, deliveryAddress } = request.body
+    const {
+      items,
+      notes,
+      deliveryAddress,
+      deliveryType,
+      deliveryFee,
+      deliveryZoneId,
+      estimatedDeliveryDate,
+    } = request.body
 
     if (!orderId) return reply.status(400).send({ error: 'Pedido inválido' })
 
@@ -563,6 +571,39 @@ export class StoreController {
       return reply.status(400).send({ error: 'O pedido precisa ter pelo menos um item' })
     }
 
+    // Valida data nova se mudou
+    let newAgendaSlot = null
+    let oldAgendaSlot = null
+    if (estimatedDeliveryDate !== undefined) {
+      // Resolve slot novo
+      if (estimatedDeliveryDate) {
+        const datePart = String(estimatedDeliveryDate).split('|')[0]
+        const dateObj = new Date(datePart + 'T00:00:00.000Z')
+        newAgendaSlot = await prisma.agendaSlot.findFirst({
+          where: { userId, date: dateObj, active: true },
+        })
+        if (!newAgendaSlot) {
+          return reply.status(400).send({ error: 'Data selecionada não está disponível na agenda' })
+        }
+      }
+      // Resolve slot antigo (para decrementar)
+      if (order.estimatedDeliveryDate) {
+        const m = String(order.estimatedDeliveryDate).match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+        if (m) {
+          const isoOld = `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`
+          oldAgendaSlot = await prisma.agendaSlot.findFirst({
+            where: { userId, date: new Date(isoOld + 'T00:00:00.000Z') },
+          })
+        }
+      }
+      // Se mudou de slot e o novo esta lotado, bloqueia
+      if (newAgendaSlot && (!oldAgendaSlot || oldAgendaSlot.id !== newAgendaSlot.id)) {
+        if (newAgendaSlot.currentOrders >= newAgendaSlot.maxOrders) {
+          return reply.status(400).send({ error: 'Data selecionada está lotada. Escolha outra data.' })
+        }
+      }
+    }
+
     // Carrega produtos novos pra recalcular preco usando snapshot atual do catalogo
     const productIds = [...new Set(items.map(i => Number(i.productId)).filter(Boolean))]
     const products = await prisma.product.findMany({
@@ -572,29 +613,48 @@ export class StoreController {
       return reply.status(400).send({ error: 'Um ou mais produtos não encontrados ou inativos' })
     }
 
-    // Reaproveita adicionais/anexos existentes por productId (mantem o que estava)
-    const existingByProduct = new Map()
+    // Resolve adicionais informados no payload (por item), com mesma logica do create
+    let itemAddons = []
+    try {
+      itemAddons = await resolveItemAdditionals(userId, items)
+    } catch (err) {
+      return reply.status(err.statusCode || 500).send({ error: err.message })
+    }
+
+    // Reaproveita anexos existentes por productId (cliente nao re-envia anexos no edit)
+    const existingAttachmentsByProduct = new Map()
     for (const oi of order.items) {
-      existingByProduct.set(oi.productId, oi)
+      if ((oi.attachments || []).length) {
+        existingAttachmentsByProduct.set(oi.productId, oi.attachments)
+      }
     }
 
     let total = 0
     const newItemsData = []
-    for (const it of items) {
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i]
       const productId = Number(it.productId)
       const quantity = Math.max(1, Math.min(500, Number(it.quantity) || 1))
       const product = products.find(p => p.id === productId)
       if (!product) continue
-      const existing = existingByProduct.get(productId)
-      const addonTotal = (existing?.additionals || []).reduce((s, a) => s + Number(a.price) * (a.quantity || 1), 0)
+      const addons = itemAddons[i]?._addons || []
+      const addonTotal = itemAddons[i]?._addonTotal || 0
       total += (Number(product.price) + addonTotal) * quantity
-      newItemsData.push({ productId, quantity, price: product.price, _existing: existing })
+      newItemsData.push({
+        productId,
+        quantity,
+        price: product.price,
+        _addons: addons,
+        _attachments: existingAttachmentsByProduct.get(productId) || [],
+      })
     }
 
-    const deliveryFee = order.deliveryFee ? Number(order.deliveryFee) : 0
-    const totalWithFee = total + deliveryFee
+    const effectiveDeliveryFee = deliveryFee !== undefined
+      ? (deliveryFee ? Number(deliveryFee) : 0)
+      : (order.deliveryFee ? Number(order.deliveryFee) : 0)
+    const totalWithFee = total + effectiveDeliveryFee
 
-    // Recalcula reserva se a conta usa reserva (mantem mesma % vigente)
+    // Recalcula reserva se a conta usa reserva
     const account = await prisma.account.findUnique({
       where: { userId },
       select: { useReservation: true, reservationPercent: true },
@@ -603,27 +663,20 @@ export class StoreController {
       ? Math.round(totalWithFee * account.reservationPercent) / 100
       : null
 
-    // Substitui itens em transacao: deleta os antigos e cria os novos.
-    // Preserva adicionais/anexos para produtos que continuaram no pedido,
-    // recriando-os apos a substituicao.
-    await prisma.$transaction(async (tx) => {
-      // Captura adicionais/anexos a recriar (por productId)
-      const reuse = newItemsData
-        .map(d => ({
-          productId: d.productId,
-          addons: (d._existing?.additionals || []).map(a => ({
-            additionalId: a.additionalId,
-            description: a.description,
-            price: a.price,
-            quantity: a.quantity,
-          })),
-          attachments: (d._existing?.attachments || []).map(att => ({
-            imageUrl: att.imageUrl,
-            description: att.description,
-          })),
-        }))
+    // Formata data de entrega para exibicao
+    let deliveryDateDisplay = order.estimatedDeliveryDate
+    if (estimatedDeliveryDate !== undefined) {
+      if (estimatedDeliveryDate) {
+        const [datePart, timePart] = String(estimatedDeliveryDate).split('|')
+        const [y, m, d] = datePart.split('-')
+        deliveryDateDisplay = `${d}/${m}/${y}`
+        if (timePart) deliveryDateDisplay += ` às ${timePart}`
+      } else {
+        deliveryDateDisplay = null
+      }
+    }
 
-      // Apaga adicionais/anexos/itens antigos
+    await prisma.$transaction(async (tx) => {
       const oldItemIds = order.items.map(i => i.id)
       if (oldItemIds.length) {
         await tx.orderItemAdditional.deleteMany({ where: { orderItemId: { in: oldItemIds } } })
@@ -631,7 +684,6 @@ export class StoreController {
         await tx.orderItem.deleteMany({ where: { id: { in: oldItemIds } } })
       }
 
-      // Recria itens
       for (const data of newItemsData) {
         const created = await tx.orderItem.create({
           data: {
@@ -641,26 +693,53 @@ export class StoreController {
             price: data.price,
           },
         })
-        const reuseData = reuse.find(r => r.productId === data.productId)
-        if (reuseData?.addons.length) {
+        if (data._addons.length) {
           await tx.orderItemAdditional.createMany({
-            data: reuseData.addons.map(a => ({ orderItemId: created.id, ...a })),
+            data: data._addons.map(a => ({
+              orderItemId: created.id,
+              additionalId: a.additionalId,
+              description: a.description,
+              price: a.price,
+              quantity: a.quantity,
+            })),
           })
         }
-        if (reuseData?.attachments.length) {
+        if (data._attachments.length) {
           await tx.orderItemAttachment.createMany({
-            data: reuseData.attachments.map(a => ({ orderItemId: created.id, ...a })),
+            data: data._attachments.map(att => ({
+              orderItemId: created.id,
+              imageUrl: att.imageUrl,
+              description: att.description,
+            })),
           })
         }
       }
 
-      // Atualiza order
+      // Atualiza contador da agenda se a data mudou
+      if (estimatedDeliveryDate !== undefined) {
+        if (oldAgendaSlot && (!newAgendaSlot || oldAgendaSlot.id !== newAgendaSlot.id)) {
+          await tx.agendaSlot.update({
+            where: { id: oldAgendaSlot.id },
+            data: { currentOrders: { decrement: 1 } },
+          })
+        }
+        if (newAgendaSlot && (!oldAgendaSlot || oldAgendaSlot.id !== newAgendaSlot.id)) {
+          await tx.agendaSlot.update({
+            where: { id: newAgendaSlot.id },
+            data: { currentOrders: { increment: 1 } },
+          })
+        }
+      }
+
       await tx.order.update({
         where: { id: order.id },
         data: {
           total: totalWithFee,
           ...(deliveryAddress !== undefined ? { deliveryAddress: deliveryAddress || null } : {}),
+          ...(deliveryType !== undefined ? { deliveryType: deliveryType || null } : {}),
+          ...(deliveryFee !== undefined ? { deliveryFee: deliveryFee ? Number(deliveryFee) : null } : {}),
           ...(notes !== undefined ? { notes: notes || null } : {}),
+          ...(estimatedDeliveryDate !== undefined ? { estimatedDeliveryDate: deliveryDateDisplay } : {}),
           ...(reservationValue !== null
             ? { reservation: reservationValue, depositAmount: reservationValue }
             : {}),

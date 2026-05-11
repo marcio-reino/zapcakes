@@ -105,6 +105,43 @@ export default function StoreCart() {
   const [showCalendar, setShowCalendar] = useState(false)
   const [calMonth, setCalMonth] = useState(() => { const d = new Date(); return { year: d.getFullYear(), month: d.getMonth() } })
 
+  // Modo edicao: StoreMyOrders salva um snapshot do pedido em sessionStorage
+  // antes de navegar pra ca; lemos uma unica vez e usamos pra (a) pre-preencher
+  // entrega/endereco/data, (b) alternar submit para PUT em /orders/:id
+  const [editingOrder, setEditingOrder] = useState(() => {
+    try {
+      const raw = sessionStorage.getItem(`zapcakes_editing_order_${slug}`)
+      return raw ? JSON.parse(raw) : null
+    } catch { return null }
+  })
+
+  useEffect(() => {
+    if (!editingOrder) return
+    if (editingOrder.notes) setNotes(editingOrder.notes)
+    if (editingOrder.deliveryType) {
+      const dt = String(editingOrder.deliveryType).toLowerCase()
+      setDeliveryType(dt === 'entrega' || dt === 'delivery' ? 'delivery' : 'pickup')
+    }
+    if (editingOrder.deliveryAddress) {
+      setDeliveryAddress(editingOrder.deliveryAddress)
+      setAddressSource('other')
+    }
+    if (editingOrder.estimatedDeliveryDate) {
+      const m = String(editingOrder.estimatedDeliveryDate).match(/(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+às\s+(\d{1,2}):(\d{2}))?/)
+      if (m) {
+        const iso = `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`
+        setSelectedDate(iso)
+        if (m[4] && m[5]) setSelectedTime(`${m[4].padStart(2, '0')}:${m[5]}`)
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  function clearEditingFlag() {
+    sessionStorage.removeItem(`zapcakes_editing_order_${slug}`)
+    setEditingOrder(null)
+  }
+
   useEffect(() => {
     storeApi.get(`/store/${slug}/availability`)
       .then(({ data }) => setAvailableDates(data))
@@ -345,7 +382,7 @@ export default function StoreCart() {
         ? deliveryZones.find(z => z.id === Number(selectedZoneId))
         : null
 
-      const { data } = await storeApi.post(`/store/${slug}/orders`, {
+      const payload = {
         items: uploadedItems.length ? uploadedItems : undefined,
         combos: combos.length ? combos : undefined,
         deliveryType,
@@ -356,7 +393,18 @@ export default function StoreCart() {
         estimatedDeliveryDate: selectedDate
           ? (selectedTime ? `${selectedDate}|${selectedTime}` : selectedDate)
           : null,
-      })
+      }
+
+      if (editingOrder) {
+        await storeApi.put(`/store/${slug}/orders/${editingOrder.orderId}`, payload)
+        clearCart()
+        clearEditingFlag()
+        toast.success('Pedido atualizado!')
+        setTimeout(() => navigate(`/loja/${slug}/meus-pedidos`), 800)
+        return
+      }
+
+      const { data } = await storeApi.post(`/store/${slug}/orders`, payload)
 
       clearCart()
 
@@ -403,7 +451,28 @@ export default function StoreCart() {
         Voltar ao catálogo
       </Link>
 
-      <h1 className="text-xl font-bold text-gray-800 mb-4">Seu pedido ({count} {count === 1 ? 'item' : 'itens'})</h1>
+      <h1 className="text-xl font-bold text-gray-800 mb-1">
+        {editingOrder
+          ? `Editando pedido #${String(editingOrder.orderNumber).padStart(5, '0')}`
+          : `Seu pedido (${count} ${count === 1 ? 'item' : 'itens'})`}
+      </h1>
+      {editingOrder && (
+        <div className="mb-4">
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            ⚠️ Você está editando um pedido existente. As alterações substituem o pedido original. Você pode editar até 6h após o envio OU até anexar o comprovante.
+          </p>
+          <button
+            onClick={() => {
+              clearCart()
+              clearEditingFlag()
+              navigate(`/loja/${slug}/meus-pedidos`)
+            }}
+            className="mt-2 text-xs text-gray-500 underline hover:text-gray-700"
+          >
+            Cancelar edição e voltar para Meus pedidos
+          </button>
+        </div>
+      )}
 
       {/* Items */}
       <div className="space-y-3 mb-6">
@@ -790,7 +859,11 @@ export default function StoreCart() {
           disabled={sending}
           className="w-full py-3.5 bg-green-600 text-white rounded-xl font-semibold text-base hover:bg-green-700 transition-colors disabled:opacity-50 shadow-lg shadow-green-600/30"
         >
-          {sending ? 'Analisando e enviando pedido...' : customer ? 'Finalizar pedido' : 'Fazer login para pedir'}
+          {sending
+            ? (editingOrder ? 'Salvando alterações...' : 'Analisando e enviando pedido...')
+            : !customer ? 'Fazer login para pedir'
+            : editingOrder ? 'Salvar alterações'
+            : 'Finalizar pedido'}
         </button>
       </div>
     </div>
