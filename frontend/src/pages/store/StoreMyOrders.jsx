@@ -363,9 +363,16 @@ export default function StoreMyOrders() {
     clearCart()
     for (const item of order.items) {
       if (!item.product) continue
-      addItem(item.product, item.quantity)
+      // Garante que o produto passado pro carrinho tenha price (alguns deploys
+      // antigos do endpoint /customer/orders nao retornavam price; entao caimos
+      // pro snapshot item.price salvo no order_item)
+      const product = {
+        ...item.product,
+        price: item.product.price ?? item.price,
+      }
+      addItem(product, item.quantity)
       if ((item.additionals || []).length > 0) {
-        updateAdditionals(item.product.id, item.additionals.map(a => ({
+        updateAdditionals(product.id, item.additionals.map(a => ({
           id: a.additionalId,
           description: a.description,
           price: a.price,
@@ -373,7 +380,7 @@ export default function StoreMyOrders() {
         })))
       }
       if ((item.attachments || []).length > 0) {
-        updateAttachments(item.product.id, item.attachments.map(att => ({
+        updateAttachments(product.id, item.attachments.map(att => ({
           imageUrl: att.imageUrl,
           description: att.description,
         })))
