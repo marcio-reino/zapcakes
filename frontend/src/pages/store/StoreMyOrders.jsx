@@ -457,7 +457,7 @@ function OrderCard({ order, slug, store, onProofUpdate, onEdited }) {
               className="w-full flex items-center justify-center gap-2 py-3 bg-green-600 text-white rounded-xl font-bold text-sm hover:bg-green-700 transition-colors shadow-lg shadow-green-600/20"
             >
               <FiEdit2 size={16} />
-              Editar pedido{timeLeft ? ` (${timeLeft} restantes)` : ''}
+              Editar pedido
             </button>
           )}
         </div>
