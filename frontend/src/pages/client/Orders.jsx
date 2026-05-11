@@ -813,13 +813,16 @@ export default function ClientOrders() {
           if (filterDate) {
             if (dateType === 'scheduled') {
               if (!order.estimatedDeliveryDate) return false
-              const normalized = order.estimatedDeliveryDate.replace(/\//g, '-')
-              const parts = normalized.split('-')
+              const s = order.estimatedDeliveryDate
               let orderDateStr = ''
-              if (parts[0].length === 4) {
-                orderDateStr = normalized.slice(0, 10)
+              const isoMatch = s.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/)
+              const brMatch = s.match(/(\d{1,2})[/-](\d{1,2})[/-](\d{4})/)
+              if (isoMatch) {
+                orderDateStr = `${isoMatch[1]}-${isoMatch[2].padStart(2, '0')}-${isoMatch[3].padStart(2, '0')}`
+              } else if (brMatch) {
+                orderDateStr = `${brMatch[3]}-${brMatch[2].padStart(2, '0')}-${brMatch[1].padStart(2, '0')}`
               } else {
-                orderDateStr = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`
+                return false
               }
               if (orderDateStr !== filterDate) return false
             } else {
