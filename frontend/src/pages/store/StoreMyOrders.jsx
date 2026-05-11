@@ -353,6 +353,7 @@ function PaymentProofSection({ order, slug, store, onUpdate }) {
 function OrderCard({ order, slug, store, onProofUpdate, onEdited }) {
   const [expanded, setExpanded] = useState(false)
   const [editing, setEditing] = useState(false)
+  const [confirmingEdit, setConfirmingEdit] = useState(false)
   const status = STATUS_MAP[order.status] || STATUS_MAP.PENDING
 
   const showPaymentProof = order.status === 'RESERVATION' || order.status === 'PENDING'
@@ -444,21 +445,45 @@ function OrderCard({ order, slug, store, onProofUpdate, onEdited }) {
             </div>
           )}
 
-          {/* Botao de edicao */}
-          {editable && (
-            <button
-              onClick={() => setEditing(true)}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border-2 border-green-200 bg-green-50 text-green-700 text-sm font-semibold hover:bg-green-100 transition-colors"
-            >
-              <FiEdit2 size={14} />
-              Editar pedido{timeLeft ? ` (${timeLeft} restantes)` : ''}
-            </button>
-          )}
-
           {/* Comprovante de pagamento PIX */}
           {showPaymentProof && (
             <PaymentProofSection order={order} slug={slug} store={store} onUpdate={onProofUpdate} />
           )}
+
+          {/* Botao Editar pedido — abaixo do comprovante */}
+          {editable && (
+            <button
+              onClick={() => setConfirmingEdit(true)}
+              className="w-full flex items-center justify-center gap-2 py-3 bg-green-600 text-white rounded-xl font-bold text-sm hover:bg-green-700 transition-colors shadow-lg shadow-green-600/20"
+            >
+              <FiEdit2 size={16} />
+              Editar pedido{timeLeft ? ` (${timeLeft} restantes)` : ''}
+            </button>
+          )}
+        </div>
+      )}
+      {confirmingEdit && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setConfirmingEdit(false)}>
+          <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl p-5" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base font-bold text-gray-800 mb-2">Editar pedido #{String(order.orderNumber).padStart(5, '0')}?</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Deseja realmente editar esse pedido? Você pode alterar até <strong>6 horas</strong> após o envio do pedido OU até enviar o comprovante de pagamento.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setConfirmingEdit(false)}
+                className="flex-1 py-2.5 rounded-lg border border-gray-300 text-sm font-medium text-gray-600 hover:bg-gray-50"
+              >
+                Não
+              </button>
+              <button
+                onClick={() => { setConfirmingEdit(false); setEditing(true) }}
+                className="flex-1 py-2.5 rounded-lg bg-green-600 text-white text-sm font-bold hover:bg-green-700"
+              >
+                Sim, editar
+              </button>
+            </div>
+          </div>
         </div>
       )}
       {editing && (
