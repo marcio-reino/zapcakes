@@ -761,7 +761,7 @@ export class StoreController {
     const orders = await prisma.order.findMany({
       where: { customerId, userId },
       include: {
-        items: { include: { product: { select: { id: true, name: true, imageUrl: true } }, attachments: true, additionals: true } },
+        items: { include: { product: { select: { id: true, name: true, imageUrl: true, price: true, minOrder: true, maxOrder: true, description: true, allowInspirationImages: true, maxInspirationImages: true, inspirationInstruction: true } }, attachments: true, additionals: true } },
       },
       orderBy: { createdAt: 'desc' },
       take: 50,
