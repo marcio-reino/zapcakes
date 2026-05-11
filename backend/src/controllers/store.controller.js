@@ -532,6 +532,149 @@ export class StoreController {
     return reply.status(201).send(fullOrder)
   }
 
+  // PUT /api/store/:slug/orders/:id — cliente edita um pedido proprio
+  // Permitido somente se: dono bate, status=PENDING, sem paymentProof, dentro de 6h.
+  async updateMyOrder(request, reply) {
+    const orderId = Number(request.params.id)
+    const { customerId, userId } = request.customer
+    const { items, notes, deliveryAddress } = request.body
+
+    if (!orderId) return reply.status(400).send({ error: 'Pedido inválido' })
+
+    const order = await prisma.order.findFirst({
+      where: { id: orderId, userId, customerId },
+      include: { items: { include: { additionals: true, attachments: true } } },
+    })
+    if (!order) return reply.status(404).send({ error: 'Pedido não encontrado' })
+
+    if (order.status !== 'PENDING') {
+      return reply.status(403).send({ error: 'Este pedido não pode mais ser editado (status atual: ' + order.status + ')' })
+    }
+    if (order.paymentProof) {
+      return reply.status(403).send({ error: 'Pedido bloqueado para edição: comprovante de pagamento já foi enviado' })
+    }
+    const ageMs = Date.now() - new Date(order.createdAt).getTime()
+    const SIX_HOURS_MS = 6 * 60 * 60 * 1000
+    if (ageMs > SIX_HOURS_MS) {
+      return reply.status(403).send({ error: 'A janela de 6 horas para edição expirou' })
+    }
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return reply.status(400).send({ error: 'O pedido precisa ter pelo menos um item' })
+    }
+
+    // Carrega produtos novos pra recalcular preco usando snapshot atual do catalogo
+    const productIds = [...new Set(items.map(i => Number(i.productId)).filter(Boolean))]
+    const products = await prisma.product.findMany({
+      where: { id: { in: productIds }, userId, active: true },
+    })
+    if (products.length !== productIds.length) {
+      return reply.status(400).send({ error: 'Um ou mais produtos não encontrados ou inativos' })
+    }
+
+    // Reaproveita adicionais/anexos existentes por productId (mantem o que estava)
+    const existingByProduct = new Map()
+    for (const oi of order.items) {
+      existingByProduct.set(oi.productId, oi)
+    }
+
+    let total = 0
+    const newItemsData = []
+    for (const it of items) {
+      const productId = Number(it.productId)
+      const quantity = Math.max(1, Math.min(500, Number(it.quantity) || 1))
+      const product = products.find(p => p.id === productId)
+      if (!product) continue
+      const existing = existingByProduct.get(productId)
+      const addonTotal = (existing?.additionals || []).reduce((s, a) => s + Number(a.price) * (a.quantity || 1), 0)
+      total += (Number(product.price) + addonTotal) * quantity
+      newItemsData.push({ productId, quantity, price: product.price, _existing: existing })
+    }
+
+    const deliveryFee = order.deliveryFee ? Number(order.deliveryFee) : 0
+    const totalWithFee = total + deliveryFee
+
+    // Recalcula reserva se a conta usa reserva (mantem mesma % vigente)
+    const account = await prisma.account.findUnique({
+      where: { userId },
+      select: { useReservation: true, reservationPercent: true },
+    })
+    const reservationValue = (account?.useReservation && account?.reservationPercent > 0)
+      ? Math.round(totalWithFee * account.reservationPercent) / 100
+      : null
+
+    // Substitui itens em transacao: deleta os antigos e cria os novos.
+    // Preserva adicionais/anexos para produtos que continuaram no pedido,
+    // recriando-os apos a substituicao.
+    await prisma.$transaction(async (tx) => {
+      // Captura adicionais/anexos a recriar (por productId)
+      const reuse = newItemsData
+        .map(d => ({
+          productId: d.productId,
+          addons: (d._existing?.additionals || []).map(a => ({
+            additionalId: a.additionalId,
+            description: a.description,
+            price: a.price,
+            quantity: a.quantity,
+          })),
+          attachments: (d._existing?.attachments || []).map(att => ({
+            imageUrl: att.imageUrl,
+            description: att.description,
+          })),
+        }))
+
+      // Apaga adicionais/anexos/itens antigos
+      const oldItemIds = order.items.map(i => i.id)
+      if (oldItemIds.length) {
+        await tx.orderItemAdditional.deleteMany({ where: { orderItemId: { in: oldItemIds } } })
+        await tx.orderItemAttachment.deleteMany({ where: { orderItemId: { in: oldItemIds } } })
+        await tx.orderItem.deleteMany({ where: { id: { in: oldItemIds } } })
+      }
+
+      // Recria itens
+      for (const data of newItemsData) {
+        const created = await tx.orderItem.create({
+          data: {
+            orderId: order.id,
+            productId: data.productId,
+            quantity: data.quantity,
+            price: data.price,
+          },
+        })
+        const reuseData = reuse.find(r => r.productId === data.productId)
+        if (reuseData?.addons.length) {
+          await tx.orderItemAdditional.createMany({
+            data: reuseData.addons.map(a => ({ orderItemId: created.id, ...a })),
+          })
+        }
+        if (reuseData?.attachments.length) {
+          await tx.orderItemAttachment.createMany({
+            data: reuseData.attachments.map(a => ({ orderItemId: created.id, ...a })),
+          })
+        }
+      }
+
+      // Atualiza order
+      await tx.order.update({
+        where: { id: order.id },
+        data: {
+          total: totalWithFee,
+          ...(deliveryAddress !== undefined ? { deliveryAddress: deliveryAddress || null } : {}),
+          ...(notes !== undefined ? { notes: notes || null } : {}),
+          ...(reservationValue !== null
+            ? { reservation: reservationValue, depositAmount: reservationValue }
+            : {}),
+        },
+      })
+    })
+
+    const fullOrder = await prisma.order.findUnique({
+      where: { id: order.id },
+      include: { items: { include: { product: true, attachments: true, additionals: true } } },
+    })
+    return reply.send(fullOrder)
+  }
+
   // GET /api/store/:slug/customer/orders
   async listMyOrders(request, reply) {
     const { customerId, userId } = request.customer

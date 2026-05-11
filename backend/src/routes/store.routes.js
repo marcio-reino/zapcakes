@@ -21,6 +21,7 @@ export async function storeRoutes(app) {
   app.put('/:slug/customer/me', { preHandler: [app.authenticateCustomer] }, controller.customerUpdateProfile)
   app.put('/:slug/customer/password', { preHandler: [app.authenticateCustomer] }, controller.customerChangePassword)
   app.post('/:slug/orders', { preHandler: [app.authenticateCustomer] }, controller.createOrder)
+  app.put('/:slug/orders/:id', { preHandler: [app.authenticateCustomer] }, controller.updateMyOrder)
   app.get('/:slug/customer/orders', { preHandler: [app.authenticateCustomer] }, controller.listMyOrders)
   app.post('/:slug/upload', { preHandler: [app.authenticateCustomer] }, controller.uploadInspirationImage)
   app.post('/:slug/validate-images', { preHandler: [app.authenticateCustomer] }, controller.validateInspirationImages)

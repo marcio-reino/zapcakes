@@ -1,9 +1,183 @@
 import { useState, useEffect, useRef } from 'react'
 import { useOutletContext, Link, useNavigate } from 'react-router-dom'
-import { FiArrowLeft, FiChevronDown, FiChevronUp, FiUpload, FiCheck, FiClock, FiX, FiImage, FiAlertTriangle } from 'react-icons/fi'
+import { FiArrowLeft, FiChevronDown, FiChevronUp, FiUpload, FiCheck, FiClock, FiX, FiImage, FiAlertTriangle, FiEdit2, FiPlus, FiMinus, FiTrash2 } from 'react-icons/fi'
 import storeApi from '../../services/storeApi.js'
 import { useStoreAuth } from '../../contexts/StoreAuthContext.jsx'
 import toast from 'react-hot-toast'
+
+const EDIT_WINDOW_MS = 6 * 60 * 60 * 1000 // 6 horas
+
+function canEditOrder(order) {
+  if (order.status !== 'PENDING') return false
+  if (order.paymentProof) return false
+  const ageMs = Date.now() - new Date(order.createdAt).getTime()
+  return ageMs <= EDIT_WINDOW_MS
+}
+
+function editTimeLeft(order) {
+  const remainingMs = EDIT_WINDOW_MS - (Date.now() - new Date(order.createdAt).getTime())
+  if (remainingMs <= 0) return null
+  const hours = Math.floor(remainingMs / (60 * 60 * 1000))
+  const minutes = Math.floor((remainingMs % (60 * 60 * 1000)) / (60 * 1000))
+  if (hours > 0) return `${hours}h${minutes.toString().padStart(2, '0')}min`
+  return `${minutes}min`
+}
+
+function EditOrderModal({ order, slug, onClose, onSaved }) {
+  const initialItems = order.items.map(it => ({
+    id: it.id,
+    productId: it.productId,
+    productName: it.product?.name || '',
+    productImage: it.product?.imageUrl || null,
+    unitPrice: Number(it.price),
+    quantity: it.quantity,
+    addons: it.additionals || [],
+  }))
+  const [items, setItems] = useState(initialItems)
+  const [notes, setNotes] = useState(order.notes || '')
+  const [deliveryAddress, setDeliveryAddress] = useState(order.deliveryAddress || '')
+  const [saving, setSaving] = useState(false)
+
+  function setQty(productId, newQty) {
+    setItems(prev => prev.map(i => i.productId === productId ? { ...i, quantity: Math.max(0, newQty) } : i))
+  }
+  function remove(productId) {
+    setItems(prev => prev.filter(i => i.productId !== productId))
+  }
+
+  const visibleItems = items.filter(i => i.quantity > 0)
+  const subtotal = visibleItems.reduce((sum, it) => {
+    const addonSum = (it.addons || []).reduce((s, a) => s + Number(a.price) * (a.quantity || 1), 0)
+    return sum + (it.unitPrice + addonSum) * it.quantity
+  }, 0)
+  const deliveryFee = Number(order.deliveryFee || 0)
+  const newTotal = subtotal + deliveryFee
+
+  async function handleSave() {
+    if (visibleItems.length === 0) {
+      toast.error('O pedido precisa ter ao menos um item')
+      return
+    }
+    setSaving(true)
+    try {
+      const payload = {
+        items: visibleItems.map(i => ({ productId: i.productId, quantity: i.quantity })),
+        notes,
+        deliveryAddress: order.deliveryType === 'ENTREGA' ? deliveryAddress : null,
+      }
+      const { data } = await storeApi.put(`/store/${slug}/orders/${order.id}`, payload)
+      toast.success('Pedido atualizado!')
+      onSaved(data)
+      onClose()
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Erro ao atualizar pedido')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-end md:items-center justify-center p-0 md:p-4" onClick={onClose}>
+      <div className="bg-white w-full md:max-w-lg max-h-[95vh] rounded-t-2xl md:rounded-2xl shadow-xl flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+          <h2 className="text-base font-bold text-gray-800">Editar pedido #{String(order.orderNumber).padStart(5, '0')}</h2>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg" aria-label="Fechar">
+            <FiX size={18} />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
+          <div className="text-xs text-gray-500 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            ⚠️ Você pode editar até <strong>6h</strong> após criar o pedido OU até enviar o comprovante. Depois disso, fale com a loja.
+          </div>
+
+          <div>
+            <p className="text-sm font-semibold text-gray-700 mb-2">Itens</p>
+            <div className="space-y-2">
+              {items.map(it => {
+                const addonSum = (it.addons || []).reduce((s, a) => s + Number(a.price) * (a.quantity || 1), 0)
+                const lineTotal = (it.unitPrice + addonSum) * it.quantity
+                return (
+                  <div key={it.productId} className={`flex items-center gap-2 p-2 rounded-lg border ${it.quantity > 0 ? 'border-gray-200' : 'border-red-200 bg-red-50 opacity-60'}`}>
+                    {it.productImage ? (
+                      <img src={it.productImage} alt="" className="w-10 h-10 rounded-lg object-cover" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">🧁</div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-800 truncate">{it.productName}</p>
+                      <p className="text-xs text-gray-500">{fmtBRL(lineTotal)}</p>
+                      {(it.addons || []).length > 0 && (
+                        <p className="text-xs text-gray-400 truncate">+ {it.addons.map(a => a.description).join(', ')}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => it.quantity <= 1 ? remove(it.productId) : setQty(it.productId, it.quantity - 1)} className="p-1.5 rounded-md hover:bg-gray-100 text-gray-600">
+                        {it.quantity <= 1 ? <FiTrash2 size={14} /> : <FiMinus size={14} />}
+                      </button>
+                      <span className="text-sm font-bold w-6 text-center">{it.quantity}</span>
+                      <button onClick={() => setQty(it.productId, it.quantity + 1)} className="p-1.5 rounded-md hover:bg-gray-100 text-gray-600">
+                        <FiPlus size={14} />
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {order.deliveryType === 'ENTREGA' && (
+            <div>
+              <p className="text-sm font-semibold text-gray-700 mb-2">Endereço de entrega</p>
+              <textarea
+                value={deliveryAddress}
+                onChange={(e) => setDeliveryAddress(e.target.value)}
+                rows={3}
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm outline-none focus:border-green-500"
+                placeholder="Rua, número, bairro, complemento..."
+              />
+            </div>
+          )}
+
+          <div>
+            <p className="text-sm font-semibold text-gray-700 mb-2">Observações</p>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm outline-none focus:border-green-500"
+              placeholder="Detalhes adicionais sobre o pedido..."
+            />
+          </div>
+
+          <div className="bg-gray-50 rounded-lg px-3 py-2.5">
+            <div className="flex justify-between text-sm text-gray-600">
+              <span>Subtotal</span>
+              <span>{fmtBRL(subtotal)}</span>
+            </div>
+            {deliveryFee > 0 && (
+              <div className="flex justify-between text-sm text-gray-600">
+                <span>Taxa de entrega</span>
+                <span>{fmtBRL(deliveryFee)}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-base font-bold text-gray-800 mt-1 pt-1 border-t border-gray-200">
+              <span>Total</span>
+              <span>{fmtBRL(newTotal)}</span>
+            </div>
+          </div>
+        </div>
+        <div className="px-4 py-3 border-t border-gray-100 flex gap-2">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-lg border border-gray-300 text-sm font-medium text-gray-600 hover:bg-gray-50">
+            Cancelar
+          </button>
+          <button onClick={handleSave} disabled={saving || visibleItems.length === 0} className="flex-1 py-2.5 rounded-lg bg-green-600 text-white text-sm font-bold hover:bg-green-700 disabled:opacity-50">
+            {saving ? 'Salvando...' : 'Salvar alterações'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 function fmtBRL(value) {
   return Number(value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -176,11 +350,14 @@ function PaymentProofSection({ order, slug, store, onUpdate }) {
   )
 }
 
-function OrderCard({ order, slug, store, onProofUpdate }) {
+function OrderCard({ order, slug, store, onProofUpdate, onEdited }) {
   const [expanded, setExpanded] = useState(false)
+  const [editing, setEditing] = useState(false)
   const status = STATUS_MAP[order.status] || STATUS_MAP.PENDING
 
   const showPaymentProof = order.status === 'RESERVATION' || order.status === 'PENDING'
+  const editable = canEditOrder(order)
+  const timeLeft = editable ? editTimeLeft(order) : null
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -267,11 +444,30 @@ function OrderCard({ order, slug, store, onProofUpdate }) {
             </div>
           )}
 
+          {/* Botao de edicao */}
+          {editable && (
+            <button
+              onClick={() => setEditing(true)}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border-2 border-green-200 bg-green-50 text-green-700 text-sm font-semibold hover:bg-green-100 transition-colors"
+            >
+              <FiEdit2 size={14} />
+              Editar pedido{timeLeft ? ` (${timeLeft} restantes)` : ''}
+            </button>
+          )}
+
           {/* Comprovante de pagamento PIX */}
           {showPaymentProof && (
             <PaymentProofSection order={order} slug={slug} store={store} onUpdate={onProofUpdate} />
           )}
         </div>
+      )}
+      {editing && (
+        <EditOrderModal
+          order={order}
+          slug={slug}
+          onClose={() => setEditing(false)}
+          onSaved={(updated) => onEdited(order.id, updated)}
+        />
       )}
     </div>
   )
@@ -308,6 +504,10 @@ export default function StoreMyOrders() {
     ))
   }
 
+  function handleEdited(orderId, updated) {
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...updated } : o))
+  }
+
   if (loading) {
     return (
       <div className="max-w-lg mx-auto px-4 py-8">
@@ -334,7 +534,7 @@ export default function StoreMyOrders() {
         </div>
       ) : (
         <div className="space-y-3">
-          {orders.map(o => <OrderCard key={o.id} order={o} slug={slug} store={store} onProofUpdate={handleProofUpdate} />)}
+          {orders.map(o => <OrderCard key={o.id} order={o} slug={slug} store={store} onProofUpdate={handleProofUpdate} onEdited={handleEdited} />)}
         </div>
       )}
     </div>
