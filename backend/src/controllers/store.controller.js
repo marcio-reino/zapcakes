@@ -1031,7 +1031,19 @@ Seja tolerante — aceite imagens de paletas de cores, decorações, temas de fe
               content: [
                 {
                   type: 'text',
-                  text: 'Analise esta imagem de comprovante de pagamento PIX/transferência bancária. Extraia APENAS o valor da transação em reais. Responda SOMENTE com o número decimal (ex: 46.80). Se não conseguir identificar o valor, responda "0".',
+                  text: [
+                    'Analise esta imagem de comprovante de pagamento PIX/transferência bancária e extraia APENAS o VALOR MONETÁRIO da transação em reais.',
+                    '',
+                    'REGRA OBRIGATÓRIA: o valor SÓ pode vir de um campo rotulado como "Valor pago", "Valor da transação", "Valor do PIX", "Valor transferido", "Total" ou "Valor", e SEMPRE acompanhado de "R$" ou contexto de moeda.',
+                    '',
+                    'NUNCA extraia números de:',
+                    '- CPF/CNPJ (ex: "***.473.597-**", "12.345.678/0001-90")',
+                    '- Agência/Conta (ex: "Ag 2987 Cc 2099628-6")',
+                    '- ID/Transação (ex: "E904008882026...")',
+                    '- Chave PIX, telefone, data, hora',
+                    '',
+                    'Responda SOMENTE com o número decimal usando ponto (ex: 46.80 para R$ 46,80). Se NÃO conseguir localizar com certeza um campo de valor monetário rotulado com "R$", responda "0".',
+                  ].join('\n'),
                 },
                 {
                   type: 'image_url',
@@ -1050,6 +1062,18 @@ Seja tolerante — aceite imagens de paletas de cores, decorações, temas de fe
         }
       } catch (err) {
         console.error('Erro ao analisar comprovante via IA:', err.message)
+      }
+    }
+
+    // Sanity check: descarta valores absurdos (IA pode pegar CPF/ID/conta
+    // por engano). Se proofAmount for >R$ 100.000 OU >50x o esperado,
+    // trata como "nao extraido" e equipe verifica manualmente.
+    if (proofAmount !== null) {
+      const tooHighAbsolute = proofAmount > 100000
+      const tooHighRelative = expectedAmount > 0 && proofAmount > expectedAmount * 50
+      if (tooHighAbsolute || tooHighRelative) {
+        console.warn('[Comprovante IA] proofAmount descartado por valor implausivel:', { proofAmount, expectedAmount, orderId: order.id })
+        proofAmount = null
       }
     }
 
