@@ -12,7 +12,10 @@ export default function Modal({ isOpen, onClose, title, children, footer, header
   return (
     <div className={`fixed inset-0 z-50 flex ${alignClass} justify-center`}>
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm animate-fadeIn" onClick={onClose} />
-      <div className={`relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full ${maxWidth} mx-4 overflow-hidden animate-slideDown flex flex-col`} style={maxHeight ? { maxHeight } : undefined}>
+      <div
+        className={`relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full ${maxWidth} mx-4 overflow-hidden animate-slideDown flex flex-col max-h-[calc(100vh-2rem)] md:max-h-[90vh]`}
+        style={maxHeight ? { maxHeight } : undefined}
+      >
         {title !== '' ? (
           <div className="flex items-center justify-between px-6 py-4 border-b bg-gray-50 dark:bg-gray-700 dark:border-gray-600 shrink-0">
             <h2 className="text-lg font-semibold text-gray-800 dark:text-white">{title}</h2>
@@ -30,7 +33,7 @@ export default function Modal({ isOpen, onClose, title, children, footer, header
             </button>
           </div>
         )}
-        <div className={`p-6 ${maxHeight ? 'overflow-y-auto' : ''}`}>
+        <div className="p-6 overflow-y-auto flex-1 min-h-0">
           {children}
         </div>
         {footer && (
