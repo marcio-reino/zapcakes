@@ -45,6 +45,7 @@ export default function AdminProducts() {
   const [additionals, setAdditionals] = useState([])
   const [selectedAdditionals, setSelectedAdditionals] = useState([])
   const [showAdditionalsModal, setShowAdditionalsModal] = useState(false)
+  const [addonSearch, setAddonSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [form, setForm] = useState({ name: '', description: '', price: '', categoryId: '', image: null, minOrder: 1, maxOrder: 500, allowInspirationImages: false, inspirationInstruction: '', maxInspirationImages: 3, recipeId: '' })
@@ -124,6 +125,7 @@ export default function AdminProducts() {
     setEditingId(null)
     setForm({ name: '', description: '', price: '', categoryId: '', image: null, minOrder: 1, maxOrder: 500, allowInspirationImages: false, inspirationInstruction: '', maxInspirationImages: 3, recipeId: '' })
     setSelectedAdditionals([])
+    setAddonSearch('')
     setFormTab('descricao')
     setShowModal(false)
   }
@@ -384,8 +386,29 @@ export default function AdminProducts() {
                   <p className="text-xs text-gray-400 italic py-2">Nenhum adicional cadastrado. Clique em "Gerenciar" para criar.</p>
                 )}
 
-                <div className="space-y-1.5 max-h-64 overflow-y-auto">
-                  {additionals.filter((a) => a.active).map((a) => {
+                {additionals.filter((a) => a.active).length > 0 && (
+                  <div className="relative mb-2">
+                    <FiSearch size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      value={addonSearch}
+                      onChange={(e) => setAddonSearch(e.target.value)}
+                      placeholder="Buscar adicional pela descrição..."
+                      className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700/30 text-gray-800 dark:text-gray-200 placeholder-gray-400 outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500"
+                    />
+                  </div>
+                )}
+
+                <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1 border border-gray-200 dark:border-gray-700 rounded-lg p-2">
+                  {(() => {
+                    const q = addonSearch.trim().toLowerCase()
+                    const list = additionals
+                      .filter((a) => a.active)
+                      .filter((a) => !q || a.description.toLowerCase().includes(q))
+                    if (list.length === 0) {
+                      return <p className="text-xs text-gray-400 italic py-2 text-center">Nenhum adicional encontrado para "{addonSearch}".</p>
+                    }
+                    return list.map((a) => {
                     const checked = selectedAdditionals.includes(a.id)
                     const disabled = !checked && selectedAdditionals.length >= MAX_ADDITIONALS_PER_PRODUCT
                     return (
@@ -419,7 +442,8 @@ export default function AdminProducts() {
                         </span>
                       </label>
                     )
-                  })}
+                    })
+                  })()}
                 </div>
 
                 {selectedAdditionals.length >= MAX_ADDITIONALS_PER_PRODUCT && (
