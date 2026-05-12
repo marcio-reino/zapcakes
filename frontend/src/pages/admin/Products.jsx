@@ -245,7 +245,22 @@ export default function AdminProducts() {
         </select>
       </div>
 
-      <Modal isOpen={showModal} onClose={closeModal} title={editingId ? 'Editar Produto' : 'Novo Produto'} maxWidth="max-w-lg">
+      <Modal
+        isOpen={showModal}
+        onClose={closeModal}
+        title={editingId ? 'Editar Produto' : 'Novo Produto'}
+        maxWidth="max-w-lg"
+        footer={
+          <div className="flex justify-end gap-3">
+            <button type="button" onClick={closeModal} className="px-5 py-2.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+              Cancelar
+            </button>
+            <button type="submit" form="product-form" disabled={saving} className="px-5 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+              {saving ? 'Salvando...' : editingId ? <><FiEdit2 size={16} /> Atualizar</> : <><FiPlus size={16} /> Criar</>}
+            </button>
+          </div>
+        }
+      >
         {/* Abas */}
         <div className="flex border-b border-gray-200 dark:border-gray-600 mb-5 -mt-2">
           {[
@@ -268,7 +283,7 @@ export default function AdminProducts() {
           ))}
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form id="product-form" onSubmit={handleSubmit} className="space-y-4">
           {/* Aba Descrição */}
           {formTab === 'descricao' && (
             <>
@@ -455,14 +470,6 @@ export default function AdminProducts() {
             </div>
           )}
 
-          <div className="flex justify-end gap-3 mt-6">
-            <button type="button" onClick={closeModal} className="px-5 py-2.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-              Cancelar
-            </button>
-            <button type="submit" disabled={saving} className="px-5 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
-              {saving ? 'Salvando...' : editingId ? <><FiEdit2 size={16} /> Atualizar</> : <><FiPlus size={16} /> Criar</>}
-            </button>
-          </div>
         </form>
       </Modal>
 
