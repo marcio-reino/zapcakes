@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import api from '../../services/api.js'
 import toast from 'react-hot-toast'
-import { FiPlus, FiEdit2, FiTrash2, FiSearch, FiX, FiMenu } from 'react-icons/fi'
+import { FiPlus, FiEdit2, FiTrash2, FiSearch, FiX, FiMenu, FiPackage } from 'react-icons/fi'
+
+const MAX_ADDITIONALS_PER_COMBO = 6
 import Modal from '../../components/Modal.jsx'
 import ConfirmModal from '../../components/ConfirmModal.jsx'
 import ImageUpload from '../../components/ImageUpload.jsx'
@@ -24,6 +26,9 @@ function toBRL(value) {
 export default function AdminCombos() {
   const [combos, setCombos] = useState([])
   const [products, setProducts] = useState([])
+  const [additionals, setAdditionals] = useState([])
+  const [selectedAdditionals, setSelectedAdditionals] = useState([])
+  const [addonSearch, setAddonSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [form, setForm] = useState({ name: '', description: '', discount: '', image: null })
@@ -41,9 +46,14 @@ export default function AdminCombos() {
 
   async function loadData() {
     try {
-      const [comboRes, prodRes] = await Promise.all([api.get('/combos'), api.get('/products')])
+      const [comboRes, prodRes, addRes] = await Promise.all([
+        api.get('/combos'),
+        api.get('/products'),
+        api.get('/additionals'),
+      ])
       setCombos(comboRes.data)
       setProducts(prodRes.data.filter((p) => p.active))
+      setAdditionals(addRes.data)
     } catch {
       toast.error('Erro ao carregar dados')
     } finally {
@@ -55,6 +65,8 @@ export default function AdminCombos() {
     setEditingId(null)
     setForm({ name: '', description: '', discount: '', image: null })
     setSelectedItems([])
+    setSelectedAdditionals([])
+    setAddonSearch('')
     setShowModal(true)
   }
 
@@ -66,6 +78,8 @@ export default function AdminCombos() {
       image: combo.imageUrl || null,
     })
     setSelectedItems(combo.items.map((i) => ({ productId: i.productId, quantity: i.quantity })))
+    setSelectedAdditionals(Array.isArray(combo.additionals) ? combo.additionals.map((a) => a.id) : [])
+    setAddonSearch('')
     setEditingId(combo.id)
     setShowModal(true)
   }
@@ -74,7 +88,17 @@ export default function AdminCombos() {
     setEditingId(null)
     setForm({ name: '', description: '', discount: '', image: null })
     setSelectedItems([])
+    setSelectedAdditionals([])
+    setAddonSearch('')
     setShowModal(false)
+  }
+
+  function toggleAdditional(id) {
+    setSelectedAdditionals((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id)
+      if (prev.length >= MAX_ADDITIONALS_PER_COMBO) return prev
+      return [...prev, id]
+    })
   }
 
   function addProduct(productId) {
@@ -154,6 +178,7 @@ export default function AdminCombos() {
         discount: discountValue,
         imageUrl,
         items: selectedItems,
+        additionalIds: selectedAdditionals,
       }
 
       if (editingId) {
@@ -319,6 +344,87 @@ export default function AdminCombos() {
           <div>
             <label className={labelClass}>Descrição</label>
             <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className={inputClass} rows={3} placeholder="Descrição do combo" />
+          </div>
+
+          <div className="border-t border-gray-200 dark:border-gray-600 pt-4">
+            <div className="mb-2">
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Adicionais deste combo</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                Selecione até {MAX_ADDITIONALS_PER_COMBO} adicionais que o cliente pode incluir ao comprar
+              </p>
+            </div>
+
+            {additionals.filter((a) => a.active).length === 0 && (
+              <p className="text-xs text-gray-400 italic py-2">Nenhum adicional cadastrado. Cadastre adicionais no menu próprio.</p>
+            )}
+
+            {additionals.filter((a) => a.active).length > 0 && (
+              <div className="relative mb-2">
+                <FiSearch size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  value={addonSearch}
+                  onChange={(e) => setAddonSearch(e.target.value)}
+                  placeholder="Buscar adicional pela descrição..."
+                  className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700/30 text-gray-800 dark:text-gray-200 placeholder-gray-400 outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500"
+                />
+              </div>
+            )}
+
+            {additionals.filter((a) => a.active).length > 0 && (
+              <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1 border border-gray-200 dark:border-gray-700 rounded-lg p-2">
+                {(() => {
+                  const q = addonSearch.trim().toLowerCase()
+                  const list = additionals
+                    .filter((a) => a.active)
+                    .filter((a) => !q || a.description.toLowerCase().includes(q))
+                  if (list.length === 0) {
+                    return <p className="text-xs text-gray-400 italic py-2 text-center">Nenhum adicional encontrado para "{addonSearch}".</p>
+                  }
+                  return list.map((a) => {
+                    const checked = selectedAdditionals.includes(a.id)
+                    const disabled = !checked && selectedAdditionals.length >= MAX_ADDITIONALS_PER_COMBO
+                    return (
+                      <label
+                        key={a.id}
+                        className={`flex items-center gap-3 p-2 rounded-lg border cursor-pointer transition-colors ${
+                          checked
+                            ? 'bg-green-50 border-green-300 dark:bg-green-900/20 dark:border-green-700'
+                            : disabled
+                              ? 'bg-gray-50 dark:bg-gray-900/30 border-gray-200 dark:border-gray-700 opacity-50 cursor-not-allowed'
+                              : 'bg-white dark:bg-gray-700/30 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={disabled}
+                          onChange={() => toggleAdditional(a.id)}
+                          className="w-4 h-4 text-green-600 rounded"
+                        />
+                        {a.imageUrl ? (
+                          <img src={a.imageUrl} alt={a.description} className="w-10 h-10 rounded object-cover" />
+                        ) : (
+                          <div className="w-10 h-10 rounded bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-gray-400">
+                            <FiPackage size={16} />
+                          </div>
+                        )}
+                        <span className="flex-1 text-sm text-gray-800 dark:text-gray-200 truncate">{a.description}</span>
+                        <span className="text-sm font-medium text-green-600 dark:text-green-400">
+                          {Number(a.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </span>
+                      </label>
+                    )
+                  })
+                })()}
+              </div>
+            )}
+
+            {selectedAdditionals.length >= MAX_ADDITIONALS_PER_COMBO && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+                Limite de {MAX_ADDITIONALS_PER_COMBO} adicionais atingido.
+              </p>
+            )}
           </div>
 
         </form>

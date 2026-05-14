@@ -311,8 +311,9 @@ model Combo {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  items ComboItem[]
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items              ComboItem[]
+  comboAdditionals   ComboAdditional[]
 
   @@map("combos")
 }
@@ -330,6 +331,21 @@ model ComboItem {
 
   @@unique([comboId, productId])
   @@map("combo_items")
+}
+
+// Vinculo M-N entre combo e adicional (ate 6 por combo, validado em codigo)
+model ComboAdditional {
+  id           Int      @id @default(autoincrement())
+  comboId      Int      @map("combo_id")
+  additionalId Int      @map("additional_id")
+  sortOrder    Int      @default(0) @map("sort_order")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  combo      Combo      @relation(fields: [comboId], references: [id], onDelete: Cascade)
+  additional Additional @relation(fields: [additionalId], references: [id], onDelete: Cascade)
+
+  @@unique([comboId, additionalId])
+  @@map("combo_additionals")
 }
 
 // Pedidos
@@ -424,6 +440,7 @@ model Additional {
 
   user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   productAdditionals   ProductAdditional[]
+  comboAdditionals     ComboAdditional[]
   orderItemAdditionals OrderItemAdditional[]
 
   @@index([userId, active])
