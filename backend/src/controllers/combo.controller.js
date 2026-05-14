@@ -1,7 +1,5 @@
 import prisma from '../config/database.js'
 
-const MAX_ADDITIONALS_PER_COMBO = 6
-
 const comboInclude = {
   items: {
     orderBy: { sortOrder: 'asc' },
@@ -29,11 +27,6 @@ function mapAdditionals(combo) {
 async function syncComboAdditionals(userId, comboId, additionalIds) {
   if (!Array.isArray(additionalIds)) return
   const unique = [...new Set(additionalIds.map((x) => Number(x)).filter((x) => !isNaN(x)))]
-  if (unique.length > MAX_ADDITIONALS_PER_COMBO) {
-    const err = new Error(`Máximo de ${MAX_ADDITIONALS_PER_COMBO} adicionais por combo`)
-    err.statusCode = 400
-    throw err
-  }
   if (unique.length > 0) {
     const owned = await prisma.additional.findMany({
       where: { id: { in: unique }, userId, active: true },

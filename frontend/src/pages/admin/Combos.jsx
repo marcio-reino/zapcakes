@@ -2,8 +2,6 @@ import { useState, useEffect, useRef } from 'react'
 import api from '../../services/api.js'
 import toast from 'react-hot-toast'
 import { FiPlus, FiEdit2, FiTrash2, FiSearch, FiX, FiMenu, FiPackage } from 'react-icons/fi'
-
-const MAX_ADDITIONALS_PER_COMBO = 6
 import Modal from '../../components/Modal.jsx'
 import ConfirmModal from '../../components/ConfirmModal.jsx'
 import ImageUpload from '../../components/ImageUpload.jsx'
@@ -96,7 +94,6 @@ export default function AdminCombos() {
   function toggleAdditional(id) {
     setSelectedAdditionals((prev) => {
       if (prev.includes(id)) return prev.filter((x) => x !== id)
-      if (prev.length >= MAX_ADDITIONALS_PER_COMBO) return prev
       return [...prev, id]
     })
   }
@@ -350,7 +347,7 @@ export default function AdminCombos() {
             <div className="mb-2">
               <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Adicionais deste combo</p>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                Selecione até {MAX_ADDITIONALS_PER_COMBO} adicionais que o cliente pode incluir ao comprar
+                Selecione os adicionais que o cliente pode incluir ao comprar
               </p>
             </div>
 
@@ -383,22 +380,18 @@ export default function AdminCombos() {
                   }
                   return list.map((a) => {
                     const checked = selectedAdditionals.includes(a.id)
-                    const disabled = !checked && selectedAdditionals.length >= MAX_ADDITIONALS_PER_COMBO
                     return (
                       <label
                         key={a.id}
                         className={`flex items-center gap-3 p-2 rounded-lg border cursor-pointer transition-colors ${
                           checked
                             ? 'bg-green-50 border-green-300 dark:bg-green-900/20 dark:border-green-700'
-                            : disabled
-                              ? 'bg-gray-50 dark:bg-gray-900/30 border-gray-200 dark:border-gray-700 opacity-50 cursor-not-allowed'
-                              : 'bg-white dark:bg-gray-700/30 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700'
+                            : 'bg-white dark:bg-gray-700/30 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700'
                         }`}
                       >
                         <input
                           type="checkbox"
                           checked={checked}
-                          disabled={disabled}
                           onChange={() => toggleAdditional(a.id)}
                           className="w-4 h-4 text-green-600 rounded"
                         />
@@ -420,11 +413,6 @@ export default function AdminCombos() {
               </div>
             )}
 
-            {selectedAdditionals.length >= MAX_ADDITIONALS_PER_COMBO && (
-              <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
-                Limite de {MAX_ADDITIONALS_PER_COMBO} adicionais atingido.
-              </p>
-            )}
           </div>
 
         </form>

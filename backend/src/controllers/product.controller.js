@@ -1,7 +1,5 @@
 import prisma from '../config/database.js'
 
-const MAX_ADDITIONALS_PER_PRODUCT = 6
-
 const productAdditionalsInclude = {
   productAdditionals: {
     where: { additional: { active: true } },
@@ -25,11 +23,6 @@ function mapAdditionals(product) {
 async function syncProductAdditionals(userId, productId, additionalIds) {
   if (!Array.isArray(additionalIds)) return
   const unique = [...new Set(additionalIds.map((x) => Number(x)).filter((x) => !isNaN(x)))]
-  if (unique.length > MAX_ADDITIONALS_PER_PRODUCT) {
-    const err = new Error(`Máximo de ${MAX_ADDITIONALS_PER_PRODUCT} adicionais por produto`)
-    err.statusCode = 400
-    throw err
-  }
   if (unique.length > 0) {
     const owned = await prisma.additional.findMany({
       where: { id: { in: unique }, userId, active: true },

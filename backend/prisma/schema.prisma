@@ -333,7 +333,7 @@ model ComboItem {
   @@map("combo_items")
 }
 
-// Vinculo M-N entre combo e adicional (ate 6 por combo, validado em codigo)
+// Vinculo M-N entre combo e adicional (sem limite)
 model ComboAdditional {
   id           Int      @id @default(autoincrement())
   comboId      Int      @map("combo_id")
@@ -447,7 +447,7 @@ model Additional {
   @@map("additionals")
 }
 
-// Vínculo M-N entre produto e adicional (até 6 por produto, validado em código)
+// Vínculo M-N entre produto e adicional (sem limite)
 model ProductAdditional {
   id           Int      @id @default(autoincrement())
   productId    Int      @map("product_id")

@@ -7,8 +7,6 @@ import ConfirmModal from '../../components/ConfirmModal.jsx'
 import ImageUpload from '../../components/ImageUpload.jsx'
 import AdditionalsModal from '../../components/AdditionalsModal.jsx'
 
-const MAX_ADDITIONALS_PER_PRODUCT = 6
-
 const BRL = (value) => Number(value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const fmtCode = (id) => String(id).padStart(5, '0')
 
@@ -89,7 +87,6 @@ export default function AdminProducts() {
   function toggleAdditional(id) {
     setSelectedAdditionals((prev) => {
       if (prev.includes(id)) return prev.filter((x) => x !== id)
-      if (prev.length >= MAX_ADDITIONALS_PER_PRODUCT) return prev
       return [...prev, id]
     })
   }
@@ -385,7 +382,7 @@ export default function AdminProducts() {
                   <div>
                     <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Adicionais deste produto</p>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                      Selecione até {MAX_ADDITIONALS_PER_PRODUCT} adicionais que o cliente pode incluir ao comprar
+                      Selecione os adicionais que o cliente pode incluir ao comprar
                     </p>
                   </div>
                   <button
@@ -425,22 +422,18 @@ export default function AdminProducts() {
                     }
                     return list.map((a) => {
                     const checked = selectedAdditionals.includes(a.id)
-                    const disabled = !checked && selectedAdditionals.length >= MAX_ADDITIONALS_PER_PRODUCT
                     return (
                       <label
                         key={a.id}
                         className={`flex items-center gap-3 p-2 rounded-lg border cursor-pointer transition-colors ${
                           checked
                             ? 'bg-green-50 border-green-300 dark:bg-green-900/20 dark:border-green-700'
-                            : disabled
-                              ? 'bg-gray-50 dark:bg-gray-900/30 border-gray-200 dark:border-gray-700 opacity-50 cursor-not-allowed'
-                              : 'bg-white dark:bg-gray-700/30 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700'
+                            : 'bg-white dark:bg-gray-700/30 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700'
                         }`}
                       >
                         <input
                           type="checkbox"
                           checked={checked}
-                          disabled={disabled}
                           onChange={() => toggleAdditional(a.id)}
                           className="w-4 h-4 text-green-600 rounded"
                         />
@@ -461,11 +454,6 @@ export default function AdminProducts() {
                   })()}
                 </div>
 
-                {selectedAdditionals.length >= MAX_ADDITIONALS_PER_PRODUCT && (
-                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
-                    Limite de {MAX_ADDITIONALS_PER_PRODUCT} adicionais atingido.
-                  </p>
-                )}
               </div>
             </div>
           )}
