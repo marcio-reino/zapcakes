@@ -6,13 +6,38 @@ import { useStoreAuth } from '../../contexts/StoreAuthContext.jsx'
 import { useCart } from '../../hooks/useCart.jsx'
 import toast from 'react-hot-toast'
 
-const EDIT_WINDOW_MS = 6 * 60 * 60 * 1000 // 6 horas
+// Extrai a data de entrega (YYYY-MM-DD) do campo livre estimatedDeliveryDate.
+// Aceita "dd/mm/yyyy", "yyyy-mm-dd" (com ou sem horario depois), ou "dd/mm"
+// (assume ano corrente). Retorna null se nao conseguir.
+function extractDeliveryDateISO(estimatedDeliveryDate) {
+  if (!estimatedDeliveryDate) return null
+  const s = String(estimatedDeliveryDate)
+  const iso = s.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/)
+  if (iso) return `${iso[1]}-${iso[2].padStart(2, '0')}-${iso[3].padStart(2, '0')}`
+  const br = s.match(/(\d{1,2})[/-](\d{1,2})[/-](\d{4})/)
+  if (br) return `${br[3]}-${br[2].padStart(2, '0')}-${br[1].padStart(2, '0')}`
+  const brShort = s.match(/(?<!\d)(\d{1,2})[/-](\d{1,2})(?!\d|[/-]\d)/)
+  if (brShort) {
+    const y = new Date().getFullYear()
+    return `${y}-${brShort[2].padStart(2, '0')}-${brShort[1].padStart(2, '0')}`
+  }
+  return null
+}
 
+function todayISO() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// Cliente pode editar enquanto: status PENDING, sem comprovante, e ainda
+// nao chegou o dia da entrega (hoje < data de entrega). No dia da entrega,
+// nao permite editar.
 function canEditOrder(order) {
   if (order.status !== 'PENDING') return false
   if (order.paymentProof) return false
-  const ageMs = Date.now() - new Date(order.createdAt).getTime()
-  return ageMs <= EDIT_WINDOW_MS
+  const deliveryISO = extractDeliveryDateISO(order.estimatedDeliveryDate)
+  if (!deliveryISO) return false
+  return todayISO() < deliveryISO
 }
 
 function fmtBRL(value) {
@@ -301,7 +326,7 @@ function OrderCard({ order, slug, store, onProofUpdate, onLoadForEdit }) {
           <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl p-5" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-base font-bold text-gray-800 mb-2">Editar pedido #{String(order.orderNumber).padStart(5, '0')}?</h3>
             <p className="text-sm text-gray-600 mb-4">
-              Deseja realmente editar esse pedido? O pedido vai voltar pro seu carrinho. Você pode alterar até <strong>6 horas</strong> após o envio do pedido OU até enviar o comprovante de pagamento.
+              Deseja realmente editar esse pedido? O pedido vai voltar pro seu carrinho. Você pode alterar até o <strong>dia anterior à entrega</strong> OU até enviar o comprovante de pagamento — no dia da entrega o pedido fica bloqueado.
             </p>
             <div className="flex gap-2">
               <button

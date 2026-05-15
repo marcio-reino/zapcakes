@@ -1799,10 +1799,10 @@ export class OpenAiService {
     }
     prompt += `\n📍 *Entrega:* (endereço real do cliente) OU *Retirada no local:* (endereço real da loja)\n`
     prompt += `📅 *Previsão de entrega:* (data e horário informado pelo cliente)\n\n`
-    prompt += `ℹ️ *Importante:* Após confirmado, você poderá editar este pedido pelo nosso site em até *6 horas*. Depois desse prazo, ou assim que você enviar o comprovante de pagamento, o pedido fica bloqueado para edição.\n\n`
+    prompt += `ℹ️ *Importante:* Após confirmado, você poderá editar este pedido pelo nosso site até o *dia anterior à entrega*. No dia da entrega — ou assim que você enviar o comprovante de pagamento — o pedido fica bloqueado para edição.\n\n`
     prompt += `Posso confirmar este pedido?\n`
     prompt += `---\n\n`
-    prompt += `IMPORTANTE: o aviso "Após confirmado, você poderá editar este pedido pelo nosso site em até 6 horas..." é OBRIGATÓRIO no resumo, sempre, com esse texto literal (pode ajustar a pontuação mas não o conteúdo: 6 horas, e comprovante bloqueia edição).\n\n`
+    prompt += `IMPORTANTE: o aviso "Após confirmado, você poderá editar este pedido pelo nosso site até o dia anterior à entrega..." é OBRIGATÓRIO no resumo, sempre. Pode ajustar a pontuação mas mantenha o conteúdo: edição liberada até o dia anterior à entrega, bloqueada no dia da entrega ou quando enviar o comprovante.\n\n`
 
     prompt += `j) Após o cliente CONFIRMAR o resumo, use a função "criar_pedido" para gravar o pedido no sistema. Passe TODOS os dados:\n`
     prompt += `   - customerId: ID do cliente (obtido na busca/cadastro)\n`

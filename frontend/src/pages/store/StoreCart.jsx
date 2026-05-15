@@ -316,6 +316,11 @@ export default function StoreCart() {
 
     if (!items.length) return
 
+    if (!selectedDate) {
+      toast.error('Selecione a data de entrega antes de finalizar o pedido')
+      return
+    }
+
     setSending(true)
     try {
       // Upload inspiration images & separate combos from individual items
@@ -459,7 +464,7 @@ export default function StoreCart() {
       {editingOrder && (
         <div className="mb-4">
           <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-            ⚠️ Você está editando um pedido existente. As alterações substituem o pedido original. Você pode editar até 6h após o envio OU até anexar o comprovante.
+            ⚠️ Você está editando um pedido existente. As alterações substituem o pedido original. Edição permitida até o dia anterior à entrega OU até anexar o comprovante.
           </p>
           <button
             onClick={() => {
@@ -856,12 +861,14 @@ export default function StoreCart() {
         {!(store?.useReservation && store.reservationPercent > 0 && total > 0) && !store?.pixKey && <div className="mb-2" />}
         <button
           onClick={handleOrder}
-          disabled={sending}
-          className="w-full py-3.5 bg-green-600 text-white rounded-xl font-semibold text-base hover:bg-green-700 transition-colors disabled:opacity-50 shadow-lg shadow-green-600/30"
+          disabled={sending || !selectedDate}
+          title={!selectedDate ? 'Selecione a data de entrega antes de finalizar' : undefined}
+          className="w-full py-3.5 bg-green-600 text-white rounded-xl font-semibold text-base hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-green-600/30"
         >
           {sending
             ? (editingOrder ? 'Salvando alterações...' : 'Analisando e enviando pedido...')
             : !customer ? 'Fazer login para pedir'
+            : !selectedDate ? 'Selecione a data de entrega'
             : editingOrder ? 'Salvar alterações'
             : 'Finalizar pedido'}
         </button>

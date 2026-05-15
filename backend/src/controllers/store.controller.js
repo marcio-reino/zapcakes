@@ -334,10 +334,15 @@ export class StoreController {
       return reply.status(400).send({ error: 'Adicione pelo menos um item' })
     }
 
-    // Validar data de agendamento se fornecida
+    // Data de entrega agora e obrigatoria pra fechar pedido
+    if (!estimatedDeliveryDate) {
+      return reply.status(400).send({ error: 'Selecione a data de entrega antes de finalizar o pedido' })
+    }
+
+    // Validar data de agendamento
     let agendaSlot = null
-    if (estimatedDeliveryDate) {
-      const datePart = estimatedDeliveryDate.split('|')[0]
+    {
+      const datePart = String(estimatedDeliveryDate).split('|')[0]
       const dateObj = new Date(datePart + 'T00:00:00.000Z')
       agendaSlot = await prisma.agendaSlot.findFirst({
         where: { userId, date: dateObj, active: true },
@@ -561,10 +566,30 @@ export class StoreController {
     if (order.paymentProof) {
       return reply.status(403).send({ error: 'Pedido bloqueado para edição: comprovante de pagamento já foi enviado' })
     }
-    const ageMs = Date.now() - new Date(order.createdAt).getTime()
-    const SIX_HOURS_MS = 6 * 60 * 60 * 1000
-    if (ageMs > SIX_HOURS_MS) {
-      return reply.status(403).send({ error: 'A janela de 6 horas para edição expirou' })
+    // Bloqueia edicao no dia da entrega em diante (cliente edita ate o dia
+    // anterior). Parser aceita "dd/mm/yyyy", "yyyy-mm-dd" ou "dd/mm" (com
+    // ano corrente como fallback) -- mesmo padrao usado no resto do app.
+    const deliveryISO = (() => {
+      const s = order.estimatedDeliveryDate
+      if (!s) return null
+      const iso = String(s).match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/)
+      if (iso) return `${iso[1]}-${iso[2].padStart(2, '0')}-${iso[3].padStart(2, '0')}`
+      const br = String(s).match(/(\d{1,2})[/-](\d{1,2})[/-](\d{4})/)
+      if (br) return `${br[3]}-${br[2].padStart(2, '0')}-${br[1].padStart(2, '0')}`
+      const brShort = String(s).match(/(?<!\d)(\d{1,2})[/-](\d{1,2})(?!\d|[/-]\d)/)
+      if (brShort) {
+        const y = new Date().getFullYear()
+        return `${y}-${brShort[2].padStart(2, '0')}-${brShort[1].padStart(2, '0')}`
+      }
+      return null
+    })()
+    if (!deliveryISO) {
+      return reply.status(403).send({ error: 'Pedido sem data de entrega definida — fale com a loja para editar' })
+    }
+    const today = new Date()
+    const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+    if (todayISO >= deliveryISO) {
+      return reply.status(403).send({ error: 'O pedido não pode mais ser editado: hoje é o dia da entrega (ou já passou)' })
     }
 
     if (!Array.isArray(items) || items.length === 0) {
