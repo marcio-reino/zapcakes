@@ -124,7 +124,10 @@ export default function StoreCart() {
     }
     if (editingOrder.deliveryAddress) {
       setDeliveryAddress(editingOrder.deliveryAddress)
-      setAddressSource('other')
+      // 'editing' = endereco original do pedido carregado (selecionavel no
+      // dropdown). Diferente de 'other' (que monta endereco a partir dos
+      // campos do form) para nao ser sobrescrito por aquele useEffect.
+      setAddressSource('editing')
     }
     if (editingOrder.estimatedDeliveryDate) {
       const m = String(editingOrder.estimatedDeliveryDate).match(/(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+às\s+(\d{1,2}):(\d{2}))?/)
@@ -617,6 +620,8 @@ export default function StoreCart() {
                   setAddressSource(e.target.value)
                   if (e.target.value === 'saved' && savedAddress) {
                     setDeliveryAddress(savedAddress)
+                  } else if (e.target.value === 'editing' && editingOrder?.deliveryAddress) {
+                    setDeliveryAddress(editingOrder.deliveryAddress)
                   } else if (e.target.value === 'other') {
                     setDeliveryAddress('')
                     setNewAddr({ zipCode: '', street: '', number: '', complement: '', neighborhood: '', city: '', state: '', reference: '' })
@@ -624,6 +629,9 @@ export default function StoreCart() {
                 }}
                 className="w-full px-4 py-3 border border-gray-200 rounded-xl text-base text-gray-700 focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none bg-white"
               >
+                {editingOrder?.deliveryAddress && (
+                  <option value="editing">{editingOrder.deliveryAddress} (atual do pedido)</option>
+                )}
                 {savedAddress && <option value="saved">{savedAddress}</option>}
                 <option value="other">Outro endereço</option>
               </select>
