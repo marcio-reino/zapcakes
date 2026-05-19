@@ -868,8 +868,8 @@ export default function StoreCart() {
         {!(store?.useReservation && store.reservationPercent > 0 && total > 0) && !store?.pixKey && <div className="mb-2" />}
         <button
           onClick={handleOrder}
-          disabled={sending || !selectedDate}
-          title={!selectedDate ? 'Selecione a data de entrega antes de finalizar' : undefined}
+          disabled={sending || (customer && !selectedDate)}
+          title={customer && !selectedDate ? 'Selecione a data de entrega antes de finalizar' : undefined}
           className="w-full py-3.5 bg-green-600 text-white rounded-xl font-semibold text-base hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-green-600/30"
         >
           {sending
