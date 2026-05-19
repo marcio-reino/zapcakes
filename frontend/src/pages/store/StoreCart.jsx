@@ -330,7 +330,14 @@ export default function StoreCart() {
         const isCombo = typeof item.product.id === 'string' && item.product.id.startsWith('combo_')
 
         if (isCombo) {
-          combos.push({ comboId: item.product.comboId, quantity: item.quantity })
+          const comboAddons = Array.isArray(item.additionals) && item.additionals.length > 0
+            ? item.additionals.map((a) => ({ additionalId: a.id, quantity: a.quantity || 1 }))
+            : undefined
+          combos.push({
+            comboId: item.product.comboId,
+            quantity: item.quantity,
+            additionals: comboAddons,
+          })
           continue
         }
 

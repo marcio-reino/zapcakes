@@ -141,13 +141,25 @@ export class StoreController {
           include: { product: { select: { id: true, name: true, price: true, imageUrl: true } } },
           orderBy: { sortOrder: 'asc' },
         },
+        comboAdditionals: {
+          where: { additional: { active: true } },
+          include: { additional: true },
+          orderBy: { sortOrder: 'asc' },
+        },
       },
       orderBy: { name: 'asc' },
     })
 
     return combos.map(c => {
       const totalItems = c.items.reduce((sum, i) => sum + Number(i.product.price) * i.quantity, 0)
-      return { ...c, totalPrice: totalItems - Number(c.discount || 0) }
+      const additionals = (c.comboAdditionals || []).map(ca => ({
+        id: ca.additional.id,
+        description: ca.additional.description,
+        imageUrl: ca.additional.imageUrl,
+        price: ca.additional.price,
+      }))
+      const { comboAdditionals, ...rest } = c
+      return { ...rest, additionals, totalPrice: totalItems - Number(c.discount || 0) }
     })
   }
 
@@ -407,6 +419,10 @@ export class StoreController {
             include: { product: true },
             orderBy: { sortOrder: 'asc' },
           },
+          comboAdditionals: {
+            where: { additional: { active: true } },
+            include: { additional: true },
+          },
         },
       })
 
@@ -418,20 +434,57 @@ export class StoreController {
         const combo = dbCombos.find(c => c.id === comboEntry.comboId)
         const qty = comboEntry.quantity || 1
 
+        // Adicionais selecionados pelo cliente para este combo (snapshot)
+        const allowedAddonIds = new Set(combo.comboAdditionals.map(ca => ca.additionalId))
+        const requestedAddons = Array.isArray(comboEntry.additionals) ? comboEntry.additionals : []
+        const comboAddons = []
+        for (const reqA of requestedAddons) {
+          const additionalId = Number(reqA.additionalId)
+          if (!allowedAddonIds.has(additionalId)) continue
+          const ca = combo.comboAdditionals.find(x => x.additionalId === additionalId)
+          if (!ca) continue
+          const addonQty = Math.max(1, Number(reqA.quantity) || 1)
+          comboAddons.push({
+            additionalId: ca.additionalId,
+            description: ca.additional.description,
+            price: ca.additional.price,
+            quantity: addonQty,
+          })
+          total += Number(ca.additional.price) * addonQty * qty
+        }
+
+        let firstItemKey = null
         for (const ci of combo.items) {
           const existing = orderItems.find(oi => oi.productId === ci.productId)
           if (existing) {
             existing.quantity += ci.quantity * qty
+            if (firstItemKey === null) firstItemKey = ci.productId
           } else {
-            orderItems.push({
+            const entry = {
               productId: ci.productId,
               quantity: ci.quantity * qty,
               price: ci.product.price,
               _attachments: [],
-            })
+              _addons: [],
+            }
+            orderItems.push(entry)
+            if (firstItemKey === null) firstItemKey = ci.productId
           }
           total += Number(ci.product.price) * ci.quantity * qty
         }
+
+        // Anexa os adicionais do combo no primeiro item expandido. Multiplica
+        // quantidade pelo qty do combo (ex: 2x combo + 1 topper = 2 toppers).
+        if (comboAddons.length > 0 && firstItemKey !== null) {
+          const target = orderItems.find(oi => oi.productId === firstItemKey)
+          if (target) {
+            target._addons = target._addons || []
+            for (const addon of comboAddons) {
+              target._addons.push({ ...addon, quantity: addon.quantity * qty })
+            }
+          }
+        }
+
         // Acumula desconto do combo
         comboDiscount += Number(combo.discount || 0) * qty
       }

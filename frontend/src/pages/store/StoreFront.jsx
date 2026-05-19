@@ -227,6 +227,9 @@ function ComboCard({ combo, onOpen }) {
     comboId: combo.id,
     comboItems: combo.items,
     comboDiscount: Number(combo.discount || 0),
+    // Repassa os adicionais do combo pro ProductModal renderizar a UI
+    // de selecao igual aos produtos
+    additionals: Array.isArray(combo.additionals) ? combo.additionals : [],
   }
 
   return (
