@@ -525,13 +525,13 @@ export default function StoreCart() {
                 disponiveis pra esse produto. Fora do modo edicao, mostra so
                 a lista do que ja esta selecionado (sem toggle). */}
             {editingOrder && Array.isArray(product.additionals) && product.additionals.length > 0 ? (
-              <div className="mt-2 pl-1 border-l-2 border-green-100 ml-1 space-y-1">
-                <p className="text-xs font-medium text-gray-500">Adicionais</p>
+              <div className="mt-2 pl-1 border-l-2 border-green-100 ml-1 space-y-2">
+                <p className="text-sm font-medium text-gray-500">Adicionais</p>
                 {product.additionals.map((opt) => {
                   const checked = Array.isArray(additionals) && additionals.some((a) => a.id === opt.id)
                   return (
-                    <label key={opt.id} className="flex items-center justify-between gap-2 text-xs cursor-pointer">
-                      <span className="flex items-center gap-2 text-gray-700">
+                    <label key={opt.id} className="flex items-center justify-between gap-3 text-sm cursor-pointer">
+                      <span className="flex items-center gap-3 text-gray-700">
                         <input
                           type="checkbox"
                           checked={checked}
@@ -542,7 +542,7 @@ export default function StoreCart() {
                               : current.filter((a) => a.id !== opt.id)
                             updateAdditionals(product.id, next)
                           }}
-                          className="w-3.5 h-3.5 text-green-600 rounded"
+                          className="w-5 h-5 rounded accent-green-600 cursor-pointer"
                         />
                         {opt.description}
                       </span>
