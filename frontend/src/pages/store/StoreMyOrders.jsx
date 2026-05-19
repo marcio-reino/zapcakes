@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useOutletContext, Link, useNavigate } from 'react-router-dom'
-import { FiArrowLeft, FiChevronDown, FiChevronUp, FiUpload, FiCheck, FiClock, FiX, FiImage, FiAlertTriangle, FiEdit2 } from 'react-icons/fi'
+import { FiArrowLeft, FiChevronDown, FiChevronUp, FiUpload, FiCheck, FiClock, FiX, FiImage, FiAlertTriangle, FiEdit2, FiCalendar } from 'react-icons/fi'
 import storeApi from '../../services/storeApi.js'
 import { useStoreAuth } from '../../contexts/StoreAuthContext.jsx'
 import { useCart } from '../../hooks/useCart.jsx'
@@ -236,12 +236,14 @@ function OrderCard({ order, slug, store, onProofUpdate, onLoadForEdit }) {
               const previsaoPart = m?.[2] || null
               return (
                 <div className="mt-1 space-y-0.5">
-                  <p className="text-xs text-gray-600">
-                    📅 <span className="font-medium">Data de entrega:</span> {dataPart}
+                  <p className="text-xs text-gray-600 flex items-center gap-1.5">
+                    <FiCalendar size={18} className="text-gray-500 shrink-0" />
+                    <span className="font-medium">Data de entrega:</span> {dataPart}
                   </p>
                   {previsaoPart && (
-                    <p className="text-xs text-gray-600">
-                      🕐 <span className="font-medium">Previsão de entrega:</span> {previsaoPart}
+                    <p className="text-xs text-gray-600 flex items-center gap-1.5">
+                      <FiClock size={18} className="text-gray-500 shrink-0" />
+                      <span className="font-medium">Previsão de entrega:</span> {previsaoPart}
                     </p>
                   )}
                 </div>
