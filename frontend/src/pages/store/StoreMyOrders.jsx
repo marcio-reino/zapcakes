@@ -243,7 +243,7 @@ function OrderCard({ order, slug, store, onProofUpdate, onLoadForEdit }) {
                   {previsaoPart && (
                     <p className="text-xs text-gray-600 flex items-center gap-1.5">
                       <FiClock size={18} className="text-gray-500 shrink-0" />
-                      <span className="font-medium">Previsão de entrega:</span> {previsaoPart}
+                      <span className="font-medium">Hora:</span> {previsaoPart}
                     </p>
                   )}
                 </div>
