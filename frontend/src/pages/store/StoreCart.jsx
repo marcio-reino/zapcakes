@@ -153,6 +153,10 @@ export default function StoreCart() {
         // fallback: endereco em texto livre vai pro campo rua
         setNewAddr((prev) => ({ ...prev, street: noRef, reference }))
       }
+      // CEP do pedido (campo proprio, nao parseado do string)
+      if (editingOrder.deliveryZipCode) {
+        setNewAddr((prev) => ({ ...prev, zipCode: String(editingOrder.deliveryZipCode).replace(/\D/g, '').slice(0, 8) }))
+      }
     }
     if (editingOrder.estimatedDeliveryDate) {
       const m = String(editingOrder.estimatedDeliveryDate).match(/(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+às\s+(\d{1,2}):(\d{2}))?/)
@@ -422,11 +426,26 @@ export default function StoreCart() {
         ? deliveryZones.find(z => z.id === Number(selectedZoneId))
         : null
 
+      // CEP a salvar: se for entrega via "Outro endereco" usa newAddr.zipCode;
+      // se for "saved" pega do perfil do cliente; se for "editing" mantem o
+      // CEP que ja estava no pedido (passado via snapshot)
+      let zipToSave = null
+      if (deliveryType === 'delivery') {
+        if (addressSource === 'other' && newAddr.zipCode) {
+          zipToSave = String(newAddr.zipCode).replace(/\D/g, '').slice(0, 8) || null
+        } else if (addressSource === 'saved' && customerProfile?.zipCode) {
+          zipToSave = String(customerProfile.zipCode).replace(/\D/g, '').slice(0, 8) || null
+        } else if (addressSource === 'editing' && editingOrder?.deliveryZipCode) {
+          zipToSave = String(editingOrder.deliveryZipCode).replace(/\D/g, '').slice(0, 8) || null
+        }
+      }
+
       const payload = {
         items: uploadedItems.length ? uploadedItems : undefined,
         combos: combos.length ? combos : undefined,
         deliveryType,
         deliveryAddress: deliveryType === 'delivery' ? deliveryAddress : null,
+        deliveryZipCode: zipToSave,
         deliveryZoneId: selectedZone ? selectedZone.id : null,
         deliveryFee: selectedZone ? Number(selectedZone.fee) : null,
         notes: notes || null,

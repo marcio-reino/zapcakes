@@ -364,6 +364,7 @@ model Order {
   deliveryFee     Decimal?    @map("delivery_fee") @db.Decimal(10, 2)
   deliveryType    String?     @map("delivery_type") @db.VarChar(20)
   deliveryAddress String?     @map("delivery_address") @db.Text
+  deliveryZipCode String?     @map("delivery_zip_code") @db.VarChar(9)
   paymentProof    String?     @map("payment_proof") @db.Text
   proofVerified   Boolean     @default(false) @map("proof_verified")
   paymentConfirmed Boolean    @default(false) @map("payment_confirmed")

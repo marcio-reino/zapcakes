@@ -339,7 +339,7 @@ export class StoreController {
 
   // POST /api/store/:slug/orders
   async createOrder(request, reply) {
-    const { items, combos, deliveryAddress, deliveryType, notes, estimatedDeliveryDate, deliveryFee, deliveryZoneId } = request.body
+    const { items, combos, deliveryAddress, deliveryZipCode, deliveryType, notes, estimatedDeliveryDate, deliveryFee, deliveryZoneId } = request.body
     const { customerId, userId } = request.customer
 
     if ((!items || !items.length) && (!combos || !combos.length)) {
@@ -528,6 +528,7 @@ export class StoreController {
         customerName: customer.name,
         customerPhone: customer.phone,
         deliveryAddress: deliveryAddress || null,
+        deliveryZipCode: deliveryZipCode ? String(deliveryZipCode).replace(/\D/g, '').slice(0, 8) || null : null,
         deliveryType: deliveryType || null,
         notes: notes || null,
         estimatedDeliveryDate: deliveryDateDisplay,
@@ -599,6 +600,7 @@ export class StoreController {
       items,
       notes,
       deliveryAddress,
+      deliveryZipCode,
       deliveryType,
       deliveryFee,
       deliveryZoneId,
@@ -845,6 +847,7 @@ export class StoreController {
         data: {
           total: totalWithFee,
           ...(deliveryAddress !== undefined ? { deliveryAddress: deliveryAddress || null } : {}),
+          ...(deliveryZipCode !== undefined ? { deliveryZipCode: deliveryZipCode ? String(deliveryZipCode).replace(/\D/g, '').slice(0, 8) || null : null } : {}),
           ...(deliveryType !== undefined ? { deliveryType: deliveryType || null } : {}),
           ...(deliveryFee !== undefined ? { deliveryFee: deliveryFee ? Number(deliveryFee) : null } : {}),
           ...(notes !== undefined ? { notes: notes || null } : {}),

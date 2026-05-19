@@ -461,6 +461,7 @@ export default function StoreMyOrders() {
       notes: order.notes || '',
       deliveryType: order.deliveryType || null,
       deliveryAddress: order.deliveryAddress || '',
+      deliveryZipCode: order.deliveryZipCode || '',
       deliveryFee: order.deliveryFee ? Number(order.deliveryFee) : 0,
       estimatedDeliveryDate: order.estimatedDeliveryDate || null,
     }
