@@ -228,6 +228,25 @@ function OrderCard({ order, slug, store, onProofUpdate, onLoadForEdit }) {
             <p className="text-sm text-gray-400 mt-0.5">
               {new Date(order.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
             </p>
+            {order.estimatedDeliveryDate && (() => {
+              const s = String(order.estimatedDeliveryDate)
+              // Tenta separar "dd/mm/yyyy às HH:mm" em (data) + (horário).
+              const m = s.match(/^(\d{1,2}\/\d{1,2}\/\d{4})(?:\s+às\s+(.+))?$/)
+              const dataPart = m?.[1] || s
+              const previsaoPart = m?.[2] || null
+              return (
+                <div className="mt-1 space-y-0.5">
+                  <p className="text-xs text-gray-600">
+                    📅 <span className="font-medium">Data de entrega:</span> {dataPart}
+                  </p>
+                  {previsaoPart && (
+                    <p className="text-xs text-gray-600">
+                      🕐 <span className="font-medium">Previsão de entrega:</span> {previsaoPart}
+                    </p>
+                  )}
+                </div>
+              )
+            })()}
           </div>
           <div className="flex items-center gap-3">
             <span className={`text-sm font-medium px-2.5 py-1 rounded-full ${status.color}`}>
