@@ -85,7 +85,7 @@ function InspirationUpload({ product, attachments = [], onChange }) {
 
 export default function StoreCart() {
   const { slug, store } = useOutletContext()
-  const { items, updateQuantity, removeItem, updateAttachments, clearCart, total, count } = useCart()
+  const { items, updateQuantity, removeItem, updateAttachments, updateAdditionals, clearCart, total, count } = useCart()
   const { customer } = useStoreAuth()
   const navigate = useNavigate()
   const [notes, setNotes] = useState('')
@@ -521,7 +521,37 @@ export default function StoreCart() {
                 </button>
               </div>
             </div>
-            {Array.isArray(additionals) && additionals.length > 0 && (
+            {/* Em modo edicao, exibe checkboxes para toggle dos adicionais
+                disponiveis pra esse produto. Fora do modo edicao, mostra so
+                a lista do que ja esta selecionado (sem toggle). */}
+            {editingOrder && Array.isArray(product.additionals) && product.additionals.length > 0 ? (
+              <div className="mt-2 pl-1 border-l-2 border-green-100 ml-1 space-y-1">
+                <p className="text-xs font-medium text-gray-500">Adicionais</p>
+                {product.additionals.map((opt) => {
+                  const checked = Array.isArray(additionals) && additionals.some((a) => a.id === opt.id)
+                  return (
+                    <label key={opt.id} className="flex items-center justify-between gap-2 text-xs cursor-pointer">
+                      <span className="flex items-center gap-2 text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            const current = Array.isArray(additionals) ? additionals : []
+                            const next = e.target.checked
+                              ? [...current, { id: opt.id, description: opt.description, price: opt.price, quantity: 1 }]
+                              : current.filter((a) => a.id !== opt.id)
+                            updateAdditionals(product.id, next)
+                          }}
+                          className="w-3.5 h-3.5 text-green-600 rounded"
+                        />
+                        {opt.description}
+                      </span>
+                      <span className="text-green-600 font-medium">+ {fmtBRL(opt.price)}</span>
+                    </label>
+                  )
+                })}
+              </div>
+            ) : Array.isArray(additionals) && additionals.length > 0 ? (
               <div className="mt-2 pl-1 border-l-2 border-green-100 ml-1 space-y-0.5">
                 {additionals.map((a) => (
                   <div key={a.id} className="flex items-center justify-between text-xs text-gray-600">
@@ -530,7 +560,7 @@ export default function StoreCart() {
                   </div>
                 ))}
               </div>
-            )}
+            ) : null}
             {product.allowInspirationImages && (
               <InspirationUpload
                 product={product}

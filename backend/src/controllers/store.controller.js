@@ -691,13 +691,44 @@ export class StoreController {
       return reply.status(400).send({ error: 'Um ou mais produtos não encontrados ou inativos' })
     }
 
-    // Resolve adicionais informados no payload (por item), com mesma logica do create
-    let itemAddons = []
-    try {
-      itemAddons = await resolveItemAdditionals(userId, items)
-    } catch (err) {
-      return reply.status(err.statusCode || 500).send({ error: err.message })
+    // Resolve adicionais informados no payload (por item), permissivo.
+    // No edit, o pedido pode ter adicionais "legados" — vindos de combo
+    // ou ja desvinculados do produto pelo admin depois da criacao. Aqui
+    // aceitamos qualquer adicional ATIVO de propriedade do usuario (sem
+    // exigir o link em ProductAdditional). Isso e' mais permissivo que
+    // o resolveItemAdditionals usado no create, mas evita travar o save
+    // por adicional pre-existente que mudou de status.
+    const reqAddonIds = new Set()
+    for (const it of items) {
+      for (const a of it?.additionals || []) {
+        const id = Number(a.additionalId)
+        if (!isNaN(id)) reqAddonIds.add(id)
+      }
     }
+    const ownedAddons = reqAddonIds.size > 0
+      ? await prisma.additional.findMany({
+          where: { id: { in: [...reqAddonIds] }, userId, active: true },
+        })
+      : []
+    const addonById = Object.fromEntries(ownedAddons.map(a => [a.id, a]))
+    const itemAddons = items.map((it) => {
+      const resolved = []
+      let addonTotal = 0
+      for (const a of it?.additionals || []) {
+        const id = Number(a.additionalId)
+        const add = addonById[id]
+        if (!add) continue // ignora silenciosamente adicional invalido/inativo
+        const qty = Math.max(1, Number(a.quantity) || 1)
+        resolved.push({
+          additionalId: id,
+          description: add.description,
+          price: add.price,
+          quantity: qty,
+        })
+        addonTotal += Number(add.price) * qty
+      }
+      return { _addons: resolved, _addonTotal: addonTotal }
+    })
 
     // Reaproveita anexos existentes por productId (cliente nao re-envia anexos no edit)
     const existingAttachmentsByProduct = new Map()
@@ -839,13 +870,47 @@ export class StoreController {
     const orders = await prisma.order.findMany({
       where: { customerId, userId },
       include: {
-        items: { include: { product: { select: { id: true, name: true, imageUrl: true, price: true, minOrder: true, maxOrder: true, description: true, allowInspirationImages: true, maxInspirationImages: true, inspirationInstruction: true } }, attachments: true, additionals: true } },
+        items: {
+          include: {
+            product: {
+              select: {
+                id: true, name: true, imageUrl: true, price: true,
+                minOrder: true, maxOrder: true, description: true,
+                allowInspirationImages: true, maxInspirationImages: true, inspirationInstruction: true,
+                productAdditionals: {
+                  where: { additional: { active: true } },
+                  include: { additional: true },
+                  orderBy: { sortOrder: 'asc' },
+                },
+              },
+            },
+            attachments: true,
+            additionals: true,
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
       take: 50,
     })
 
-    return orders
+    // Mapeia productAdditionals -> additionals[] (mesmo formato usado pelo
+    // ProductModal/cart) para o cliente conseguir editar adicionais no
+    // modo de edicao do pedido.
+    return orders.map(o => ({
+      ...o,
+      items: o.items.map(it => {
+        const p = it.product
+        const productAdditionals = p?.productAdditionals || []
+        const additionalsArr = productAdditionals.map(pa => ({
+          id: pa.additional.id,
+          description: pa.additional.description,
+          imageUrl: pa.additional.imageUrl,
+          price: pa.additional.price,
+        }))
+        const { productAdditionals: _drop, ...prod } = p || {}
+        return { ...it, product: { ...prod, additionals: additionalsArr } }
+      }),
+    }))
   }
 
   // POST /api/store/:slug/upload — upload de imagem de inspiração (customer auth)
