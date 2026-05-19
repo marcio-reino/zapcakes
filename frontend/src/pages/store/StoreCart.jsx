@@ -128,6 +128,31 @@ export default function StoreCart() {
       // dropdown). Diferente de 'other' (que monta endereco a partir dos
       // campos do form) para nao ser sobrescrito por aquele useEffect.
       setAddressSource('editing')
+
+      // Tenta extrair os campos individuais do endereco salvo no formato
+      // padrao do site ("rua, numero, complemento, bairro, cidade, UF (Ref: ...)").
+      // Assim, se o cliente trocar pra "Outro endereco" pra editar, o form
+      // ja vem pre-preenchido. Se o parse falhar (endereco veio do agente
+      // WhatsApp com formato livre), joga tudo em "street" como fallback.
+      const raw = String(editingOrder.deliveryAddress)
+      const refMatch = raw.match(/\(Ref:\s*(.+)\)\s*$/)
+      const reference = refMatch ? refMatch[1].trim() : ''
+      const noRef = raw.replace(/\s*\(Ref:.+?\)\s*$/, '').trim()
+      const parts = noRef.split(',').map(s => s.trim())
+      let parsed = null
+      if (parts.length >= 5) {
+        const [street, number, complement, neighborhood, city, state] = parts
+        parsed = { street, number, complement, neighborhood, city, state: state || '', reference }
+      } else if (parts.length === 5) {
+        const [street, number, neighborhood, city, state] = parts
+        parsed = { street, number, complement: '', neighborhood, city, state, reference }
+      }
+      if (parsed) {
+        setNewAddr((prev) => ({ ...prev, ...parsed }))
+      } else {
+        // fallback: endereco em texto livre vai pro campo rua
+        setNewAddr((prev) => ({ ...prev, street: noRef, reference }))
+      }
     }
     if (editingOrder.estimatedDeliveryDate) {
       const m = String(editingOrder.estimatedDeliveryDate).match(/(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+às\s+(\d{1,2}):(\d{2}))?/)
@@ -623,8 +648,14 @@ export default function StoreCart() {
                   } else if (e.target.value === 'editing' && editingOrder?.deliveryAddress) {
                     setDeliveryAddress(editingOrder.deliveryAddress)
                   } else if (e.target.value === 'other') {
-                    setDeliveryAddress('')
-                    setNewAddr({ zipCode: '', street: '', number: '', complement: '', neighborhood: '', city: '', state: '', reference: '' })
+                    // Se newAddr ja esta preenchido (ex: parse do endereco do
+                    // pedido em edicao), preserva os valores. Caso contrario,
+                    // limpa para um form vazio.
+                    const hasAny = Object.values(newAddr).some(v => v && String(v).trim())
+                    if (!hasAny) {
+                      setDeliveryAddress('')
+                      setNewAddr({ zipCode: '', street: '', number: '', complement: '', neighborhood: '', city: '', state: '', reference: '' })
+                    }
                   }
                 }}
                 className="w-full px-4 py-3 border border-gray-200 rounded-xl text-base text-gray-700 focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none bg-white"
