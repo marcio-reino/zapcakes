@@ -444,21 +444,25 @@ export default function StoreMyOrders() {
         ...item.product,
         price: item.product.price ?? item.price,
       }
-      addItem(product, item.quantity)
-      if ((item.additionals || []).length > 0) {
-        updateAdditionals(product.id, item.additionals.map(a => ({
-          id: a.additionalId,
-          description: a.description,
-          price: a.price,
-          quantity: a.quantity,
-        })))
-      }
-      if ((item.attachments || []).length > 0) {
-        updateAttachments(product.id, item.attachments.map(att => ({
-          imageUrl: att.imageUrl,
-          description: att.description,
-        })))
-      }
+      // Monta tudo em uma unica chamada de addItem para garantir que o
+      // item ja nasca completo (evita janela onde a UI renderiza sem
+      // attachments ou additionals enquanto os updates separados sao
+      // processados pelo React).
+      const additionalsPayload = (item.additionals || []).length > 0
+        ? item.additionals.map(a => ({
+            id: a.additionalId,
+            description: a.description,
+            price: a.price,
+            quantity: a.quantity,
+          }))
+        : null
+      const attachmentsPayload = (item.attachments || []).length > 0
+        ? item.attachments.map(att => ({
+            imageUrl: att.imageUrl,
+            description: att.description,
+          }))
+        : null
+      addItem(product, item.quantity, additionalsPayload, attachmentsPayload ? { attachments: attachmentsPayload } : null)
     }
     // Snapshot do pedido em edicao -- StoreCart le e usa pra pre-preencher
     // entrega/endereco/data + alternar submit para PUT.

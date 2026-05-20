@@ -26,18 +26,33 @@ export function CartProvider({ slug, children }) {
     localStorage.setItem(getKey(slug), JSON.stringify(newItems))
   }
 
-  const addItem = useCallback((product, quantity = 1, additionals = null) => {
+  const addItem = useCallback((product, quantity = 1, additionals = null, extras = null) => {
+    // extras opcionais: { attachments, comboAttachments } — usados pelo
+    // handleLoadForEdit para preencher o item em um unico setItems atomico
+    // (evita race onde updateAttachments roda antes do item existir)
     setItems(prev => {
       const existing = prev.find(i => i.product.id === product.id)
       let next
       if (existing) {
         next = prev.map(i =>
           i.product.id === product.id
-            ? { ...i, quantity: i.quantity + quantity, ...(additionals !== null ? { additionals } : {}) }
+            ? {
+                ...i,
+                quantity: i.quantity + quantity,
+                ...(additionals !== null ? { additionals } : {}),
+                ...(extras?.attachments ? { attachments: extras.attachments } : {}),
+                ...(extras?.comboAttachments ? { comboAttachments: extras.comboAttachments } : {}),
+              }
             : i,
         )
       } else {
-        next = [...prev, { product, quantity, ...(additionals ? { additionals } : {}) }]
+        next = [...prev, {
+          product,
+          quantity,
+          ...(additionals ? { additionals } : {}),
+          ...(extras?.attachments ? { attachments: extras.attachments } : {}),
+          ...(extras?.comboAttachments ? { comboAttachments: extras.comboAttachments } : {}),
+        }]
       }
       localStorage.setItem(getKey(slug), JSON.stringify(next))
       return next

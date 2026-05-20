@@ -647,7 +647,7 @@ export default function StoreCart() {
                 ))}
               </div>
             ) : null}
-            {product.allowInspirationImages && (
+            {(product.allowInspirationImages || (Array.isArray(attachments) && attachments.length > 0)) && (
               <InspirationUpload
                 product={product}
                 attachments={attachments || []}
