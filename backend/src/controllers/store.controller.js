@@ -641,8 +641,10 @@ export class StoreController {
     if (!deliveryISO) {
       return reply.status(403).send({ error: 'Pedido sem data de entrega definida — fale com a loja para editar' })
     }
-    const today = new Date()
-    const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+    // "Hoje" em America/Sao_Paulo (UTC-3). Sem isso o container em UTC
+    // considera a virada da meia-noite UTC -- por volta de 21h em Brasilia
+    // -- como "amanha", bloqueando edicoes legitimas no fim do dia.
+    const todayISO = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())
     if (todayISO >= deliveryISO) {
       return reply.status(403).send({ error: 'O pedido não pode mais ser editado: hoje é o dia da entrega (ou já passou)' })
     }

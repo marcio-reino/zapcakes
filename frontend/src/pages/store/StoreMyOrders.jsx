@@ -25,8 +25,9 @@ function extractDeliveryDateISO(estimatedDeliveryDate) {
 }
 
 function todayISO() {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  // Usa fuso America/Sao_Paulo independentemente do timezone do navegador
+  // do cliente (a loja opera no horario do Brasil).
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())
 }
 
 // Cliente pode editar enquanto: status PENDING, sem comprovante, e ainda
