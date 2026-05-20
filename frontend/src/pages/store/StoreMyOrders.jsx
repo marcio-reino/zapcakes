@@ -315,18 +315,24 @@ function OrderCard({ order, slug, store, onProofUpdate, onLoadForEdit }) {
                   ))}
                 </div>
               )}
-              {item.attachments?.length > 0 && (
-                <div className="ml-[60px] mt-1.5 mb-1">
-                  <p className="text-sm font-semibold text-purple-600 mb-1">📸 Fotos de inspiração</p>
-                  <div className="flex gap-1.5 flex-wrap">
+              {item.attachments?.length > 0 ? (
+                <div className="mt-2 p-3 rounded-lg border border-purple-200 bg-purple-50">
+                  <p className="text-sm font-semibold text-purple-700 mb-2 flex items-center gap-1.5">
+                    📸 Fotos de inspiração enviadas ({item.attachments.length})
+                  </p>
+                  <div className="flex gap-2 flex-wrap">
                     {item.attachments.map((att) => (
-                      <a key={att.id} href={att.imageUrl} target="_blank" rel="noopener noreferrer">
-                        <img src={att.imageUrl} alt="Inspiração" className="w-12 h-12 rounded-lg object-cover border-2 border-purple-200 hover:opacity-80 transition-opacity" />
+                      <a key={att.id} href={att.imageUrl} target="_blank" rel="noopener noreferrer" className="block">
+                        <img src={att.imageUrl} alt="Inspiração" className="w-20 h-20 md:w-24 md:h-24 rounded-lg object-cover border-2 border-purple-300 hover:opacity-80 transition-opacity shadow-sm" />
                       </a>
                     ))}
                   </div>
                 </div>
-              )}
+              ) : item.product?.allowInspirationImages ? (
+                <div className="mt-2 p-2 rounded-lg border border-dashed border-gray-200 text-xs text-gray-400 italic">
+                  Sem fotos de inspiração enviadas para este item.
+                </div>
+              ) : null}
             </div>
             )
           })}
