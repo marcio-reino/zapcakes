@@ -810,6 +810,9 @@ export default function ClientOrders() {
       <div className="space-y-4">
         {orders.filter((order) => {
           if (filterStatus && order.status !== filterStatus) return false
+          // Por padrao esconde pedidos cancelados — so aparecem se o
+          // filtro de status estiver explicitamente em CANCELLED.
+          if (!filterStatus && order.status === 'CANCELLED') return false
           if (filterDate) {
             if (dateType === 'scheduled') {
               if (!order.estimatedDeliveryDate) return false
