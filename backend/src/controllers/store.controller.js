@@ -755,7 +755,10 @@ export class StoreController {
       return { _addons: resolved, _addonTotal: addonTotal }
     })
 
-    // Reaproveita anexos existentes por productId (cliente nao re-envia anexos no edit)
+    // Anexos: aceita o que o cliente enviou no body (cart envia o conjunto
+    // completo: existentes + novos uploads). Se o item do body nao tem
+    // attachments definido, cai pro snapshot do que ja estava no banco
+    // (compatibilidade pra clientes/sessoes antigas que nao enviavam o campo).
     const existingAttachmentsByProduct = new Map()
     for (const oi of order.items) {
       if ((oi.attachments || []).length) {
@@ -774,12 +777,25 @@ export class StoreController {
       const addons = itemAddons[i]?._addons || []
       const addonTotal = itemAddons[i]?._addonTotal || 0
       total += (Number(product.price) + addonTotal) * quantity
+
+      // Resolve attachments: prioriza o que veio no body, normalizando para
+      // { imageUrl, description }. Se nao veio campo, mantem o que ja estava.
+      let resolvedAttachments
+      if (Array.isArray(it.attachments)) {
+        resolvedAttachments = it.attachments
+          .map(a => ({ imageUrl: a.imageUrl, description: a.description || null }))
+          .filter(a => a.imageUrl)
+      } else {
+        resolvedAttachments = (existingAttachmentsByProduct.get(productId) || [])
+          .map(a => ({ imageUrl: a.imageUrl, description: a.description || null }))
+      }
+
       newItemsData.push({
         productId,
         quantity,
         price: product.price,
         _addons: addons,
-        _attachments: existingAttachmentsByProduct.get(productId) || [],
+        _attachments: resolvedAttachments,
       })
     }
 
