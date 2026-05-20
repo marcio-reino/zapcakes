@@ -138,7 +138,16 @@ export class StoreController {
       where: { userId: account.userId, active: true },
       include: {
         items: {
-          include: { product: { select: { id: true, name: true, price: true, imageUrl: true } } },
+          include: {
+            product: {
+              select: {
+                id: true, name: true, price: true, imageUrl: true,
+                allowInspirationImages: true,
+                maxInspirationImages: true,
+                inspirationInstruction: true,
+              },
+            },
+          },
           orderBy: { sortOrder: 'asc' },
         },
         comboAdditionals: {
@@ -453,18 +462,30 @@ export class StoreController {
           total += Number(ca.additional.price) * addonQty * qty
         }
 
+        // Imagens de inspiracao escolhidas pelo cliente para cada produto
+        // interno do combo. Formato: { [productId]: [{ imageUrl, description? }] }
+        const innerAttachmentsByProduct = (comboEntry.attachments && typeof comboEntry.attachments === 'object')
+          ? comboEntry.attachments
+          : {}
+
         let firstItemKey = null
         for (const ci of combo.items) {
+          const innerAtts = Array.isArray(innerAttachmentsByProduct[ci.productId])
+            ? innerAttachmentsByProduct[ci.productId]
+            : []
           const existing = orderItems.find(oi => oi.productId === ci.productId)
           if (existing) {
             existing.quantity += ci.quantity * qty
+            if (innerAtts.length) {
+              existing._attachments = [...(existing._attachments || []), ...innerAtts]
+            }
             if (firstItemKey === null) firstItemKey = ci.productId
           } else {
             const entry = {
               productId: ci.productId,
               quantity: ci.quantity * qty,
               price: ci.product.price,
-              _attachments: [],
+              _attachments: innerAtts,
               _addons: [],
             }
             orderItems.push(entry)

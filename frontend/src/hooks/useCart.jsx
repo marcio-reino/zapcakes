@@ -87,6 +87,25 @@ export function CartProvider({ slug, children }) {
     })
   }, [slug])
 
+  // Para combos: cada produto interno pode ter sua propria lista de
+  // imagens de inspiracao. Estrutura: item.comboAttachments[innerProductId] = []
+  const updateComboAttachments = useCallback((comboProductId, innerProductId, attachments) => {
+    setItems(prev => {
+      const next = prev.map(i => {
+        if (i.product.id !== comboProductId) return i
+        const map = { ...(i.comboAttachments || {}) }
+        if (!attachments || attachments.length === 0) {
+          delete map[innerProductId]
+        } else {
+          map[innerProductId] = attachments
+        }
+        return { ...i, comboAttachments: map }
+      })
+      localStorage.setItem(getKey(slug), JSON.stringify(next))
+      return next
+    })
+  }, [slug])
+
   const total = items.reduce(
     (sum, i) => sum + (Number(i.product.price) + addonsTotal(i.additionals)) * i.quantity,
     0,
@@ -94,7 +113,7 @@ export function CartProvider({ slug, children }) {
   const count = items.reduce((sum, i) => sum + i.quantity, 0)
 
   return (
-    <CartContext.Provider value={{ items, addItem, removeItem, updateQuantity, updateAttachments, updateAdditionals, clearCart, total, count }}>
+    <CartContext.Provider value={{ items, addItem, removeItem, updateQuantity, updateAttachments, updateAdditionals, updateComboAttachments, clearCart, total, count }}>
       {children}
     </CartContext.Provider>
   )

@@ -85,7 +85,7 @@ function InspirationUpload({ product, attachments = [], onChange }) {
 
 export default function StoreCart() {
   const { slug, store } = useOutletContext()
-  const { items, updateQuantity, removeItem, updateAttachments, updateAdditionals, clearCart, total, count } = useCart()
+  const { items, updateQuantity, removeItem, updateAttachments, updateAdditionals, updateComboAttachments, clearCart, total, count } = useCart()
   const { customer } = useStoreAuth()
   const navigate = useNavigate()
   const [notes, setNotes] = useState('')
@@ -365,10 +365,49 @@ export default function StoreCart() {
           const comboAddons = Array.isArray(item.additionals) && item.additionals.length > 0
             ? item.additionals.map((a) => ({ additionalId: a.id, quantity: a.quantity || 1 }))
             : undefined
+
+          // Upload + valida imagens de inspiracao de cada produto interno
+          // do combo separadamente. Formato final: { [productId]: [{imageUrl}] }
+          const innerAttachments = {}
+          const comboAtts = item.comboAttachments || {}
+          for (const [innerProductIdRaw, atts] of Object.entries(comboAtts)) {
+            const innerProductId = Number(innerProductIdRaw)
+            if (!Array.isArray(atts) || atts.length === 0) continue
+            const uploaded = []
+            for (const att of atts) {
+              if (att.dataUrl) {
+                const res = await fetch(att.dataUrl)
+                const blob = await res.blob()
+                const formData = new FormData()
+                formData.append('file', blob, att.name || 'inspiracao.jpg')
+                const { data: up } = await storeApi.post(`/store/${slug}/upload`, formData, {
+                  headers: { 'Content-Type': 'multipart/form-data' },
+                })
+                uploaded.push({ imageUrl: up.url })
+              } else if (att.imageUrl) {
+                uploaded.push({ imageUrl: att.imageUrl })
+              }
+            }
+            if (uploaded.length) {
+              const innerProductName = item.product.comboItems?.find(ci => ci.product?.id === innerProductId)?.product?.name || 'item do combo'
+              const { data: validation } = await storeApi.post(`/store/${slug}/validate-images`, {
+                images: uploaded,
+                productName: innerProductName,
+              })
+              if (!validation.approved) {
+                toast.error(validation.message || 'Imagens de inspiração rejeitadas. Verifique e tente novamente.', { duration: 5000 })
+                setSending(false)
+                return
+              }
+              innerAttachments[innerProductId] = uploaded
+            }
+          }
+
           combos.push({
             comboId: item.product.comboId,
             quantity: item.quantity,
             additionals: comboAddons,
+            attachments: Object.keys(innerAttachments).length ? innerAttachments : undefined,
           })
           continue
         }
@@ -615,6 +654,27 @@ export default function StoreCart() {
                 onChange={(atts) => updateAttachments(product.id, atts)}
               />
             )}
+
+            {/* Combo: para cada produto interno que aceita imagens de
+                inspiracao, renderiza um upload dedicado. As fotos sao
+                salvas em item.comboAttachments[innerProductId] e enviadas
+                separadamente no submit, fixadas ao produto correspondente
+                pela expansao no backend. */}
+            {typeof product.id === 'string' && product.id.startsWith('combo_') && Array.isArray(product.comboItems) && product.comboItems.map((ci) => {
+              const innerProduct = ci.product
+              if (!innerProduct?.allowInspirationImages) return null
+              const innerAtts = (items.find(i => i.product.id === product.id)?.comboAttachments || {})[innerProduct.id] || []
+              return (
+                <div key={`combo-insp-${innerProduct.id}`} className="mt-2">
+                  <p className="text-xs text-gray-500 mb-1">Para <strong>{innerProduct.name}</strong> (item do combo):</p>
+                  <InspirationUpload
+                    product={innerProduct}
+                    attachments={innerAtts}
+                    onChange={(atts) => updateComboAttachments(product.id, innerProduct.id, atts)}
+                  />
+                </div>
+              )
+            })}
           </div>
           )
         })}
