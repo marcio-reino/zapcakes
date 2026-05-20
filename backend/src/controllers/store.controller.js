@@ -636,12 +636,16 @@ export class StoreController {
     })
     if (!order) return reply.status(404).send({ error: 'Pedido não encontrado' })
 
-    if (order.status !== 'PENDING') {
+    // Pedido editavel enquanto PENDING (antes do comprovante) ou
+    // RESERVATION (com comprovante enviado, aguardando verificacao da loja).
+    // Em RESERVATION, entra no "modo limitado": so observacoes e fotos de
+    // inspiracao podem ser alteradas. Os demais campos (itens, adicionais,
+    // endereco, data) ficam congelados.
+    const EDITABLE_STATUSES = ['PENDING', 'RESERVATION']
+    if (!EDITABLE_STATUSES.includes(order.status)) {
       return reply.status(403).send({ error: 'Este pedido não pode mais ser editado (status atual: ' + order.status + ')' })
     }
-    if (order.paymentProof) {
-      return reply.status(403).send({ error: 'Pedido bloqueado para edição: comprovante de pagamento já foi enviado' })
-    }
+    const limitedMode = !!order.paymentProof
     // Bloqueia edicao no dia da entrega em diante (cliente edita ate o dia
     // anterior). Parser aceita "dd/mm/yyyy", "yyyy-mm-dd" ou "dd/mm" (com
     // ano corrente como fallback) -- mesmo padrao usado no resto do app.
@@ -668,6 +672,52 @@ export class StoreController {
     const todayISO = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())
     if (todayISO >= deliveryISO) {
       return reply.status(403).send({ error: 'O pedido não pode mais ser editado: hoje é o dia da entrega (ou já passou)' })
+    }
+
+    // ---- MODO LIMITADO: pedido com comprovante anexado ----
+    // So permite alterar notes (observacoes) e fotos de inspiracao dos
+    // itens existentes. Os demais campos (itens, quantidade, adicionais,
+    // entrega, data, etc.) sao ignorados silenciosamente -- congelados.
+    if (limitedMode) {
+      await prisma.$transaction(async (tx) => {
+        // Atualiza notes se veio no body
+        if (notes !== undefined) {
+          await tx.order.update({
+            where: { id: order.id },
+            data: { notes: notes || null },
+          })
+        }
+
+        // Para cada item do body, se trouxer attachments, substitui os
+        // attachments do orderItem existente correspondente (por productId).
+        if (Array.isArray(items) && items.length > 0) {
+          for (const it of items) {
+            const productId = Number(it.productId)
+            const existingOrderItem = order.items.find(oi => oi.productId === productId)
+            if (!existingOrderItem) continue
+            if (!Array.isArray(it.attachments)) continue
+            const cleaned = it.attachments
+              .map(a => ({ imageUrl: a?.imageUrl, description: a?.description || null }))
+              .filter(a => a.imageUrl)
+            // Substitui anexos do item
+            await tx.orderItemAttachment.deleteMany({ where: { orderItemId: existingOrderItem.id } })
+            if (cleaned.length) {
+              await tx.orderItemAttachment.createMany({
+                data: cleaned.map(att => ({
+                  orderItemId: existingOrderItem.id,
+                  imageUrl: att.imageUrl,
+                  description: att.description,
+                })),
+              })
+            }
+          }
+        }
+      })
+      const fullOrder = await prisma.order.findUnique({
+        where: { id: order.id },
+        include: { items: { include: { product: true, attachments: true, additionals: true } } },
+      })
+      return reply.send(fullOrder)
     }
 
     if (!Array.isArray(items) || items.length === 0) {

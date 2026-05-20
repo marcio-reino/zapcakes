@@ -348,7 +348,7 @@ export default function StoreCart() {
 
     if (!items.length) return
 
-    if (!selectedDate) {
+    if (!selectedDate && !editingOrder?.limitedMode) {
       toast.error('Selecione a data de entrega antes de finalizar o pedido')
       return
     }
@@ -556,9 +556,15 @@ export default function StoreCart() {
       </h1>
       {editingOrder && (
         <div className="mb-4">
-          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-            ⚠️ Você está editando um pedido existente. As alterações substituem o pedido original. Edição permitida até o dia anterior à entrega OU até anexar o comprovante.
-          </p>
+          {editingOrder.limitedMode ? (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              ⚠️ Como o comprovante de pagamento já foi enviado, só é possível alterar as <strong>observações</strong> e as <strong>fotos de inspiração</strong>. Itens, valor e dados de entrega estão congelados.
+            </p>
+          ) : (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              ⚠️ Você está editando um pedido existente. As alterações substituem o pedido original. Edição permitida até o dia anterior à entrega OU até anexar o comprovante.
+            </p>
+          )}
           <button
             onClick={() => {
               clearCart()
@@ -593,15 +599,17 @@ export default function StoreCart() {
               </div>
               <div className="flex items-center gap-3 flex-shrink-0">
                 <button
+                  disabled={editingOrder?.limitedMode}
                   onClick={() => quantity <= (product.minOrder || 1) ? removeItem(product.id) : updateQuantity(product.id, quantity - 1)}
-                  className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-300"
+                  className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-gray-200"
                 >
                   {quantity <= (product.minOrder || 1) ? <FiTrash2 size={15} /> : <FiMinus size={16} />}
                 </button>
                 <span className="text-base font-bold w-6 text-center">{quantity}</span>
                 <button
+                  disabled={editingOrder?.limitedMode}
                   onClick={() => updateQuantity(product.id, quantity + 1)}
-                  className="w-9 h-9 rounded-full bg-green-600 flex items-center justify-center text-white hover:bg-green-700"
+                  className="w-9 h-9 rounded-full bg-green-600 flex items-center justify-center text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-green-600"
                 >
                   <FiPlus size={16} />
                 </button>
@@ -610,7 +618,7 @@ export default function StoreCart() {
             {/* Em modo edicao, exibe checkboxes para toggle dos adicionais
                 disponiveis pra esse produto. Fora do modo edicao, mostra so
                 a lista do que ja esta selecionado (sem toggle). */}
-            {editingOrder && Array.isArray(product.additionals) && product.additionals.length > 0 ? (
+            {editingOrder && !editingOrder.limitedMode && Array.isArray(product.additionals) && product.additionals.length > 0 ? (
               <div className="mt-2 pl-1 border-l-2 border-green-100 ml-1 space-y-2">
                 <p className="text-sm font-medium text-gray-500">Adicionais</p>
                 {product.additionals.map((opt) => {
@@ -680,7 +688,8 @@ export default function StoreCart() {
         })}
       </div>
 
-      {/* Delivery type */}
+      {/* Delivery type — escondido em modo limitado (apos comprovante) */}
+      {!editingOrder?.limitedMode && (
       <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 mb-4">
         <p className="text-base font-semibold text-gray-800 mb-3">Tipo de entrega</p>
         {store?.deliveryEnabled ? (
@@ -826,9 +835,10 @@ export default function StoreCart() {
           </div>
         )}
       </div>
+      )}
 
-      {/* Agendar data */}
-      {availableDates.length > 0 && (
+      {/* Agendar data — escondido em modo limitado (apos comprovante) */}
+      {!editingOrder?.limitedMode && availableDates.length > 0 && (
         <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 mb-4">
           <p className="text-sm font-medium text-gray-700 mb-3">
             Programar data para {deliveryType === 'delivery' ? 'entrega' : 'retirada'}
@@ -1016,14 +1026,14 @@ export default function StoreCart() {
         {!(store?.useReservation && store.reservationPercent > 0 && total > 0) && !store?.pixKey && <div className="mb-2" />}
         <button
           onClick={handleOrder}
-          disabled={sending || (customer && !selectedDate)}
-          title={customer && !selectedDate ? 'Selecione a data de entrega antes de finalizar' : undefined}
+          disabled={sending || (customer && !selectedDate && !editingOrder?.limitedMode)}
+          title={customer && !selectedDate && !editingOrder?.limitedMode ? 'Selecione a data de entrega antes de finalizar' : undefined}
           className="w-full py-3.5 bg-green-600 text-white rounded-xl font-semibold text-base hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-green-600/30"
         >
           {sending
             ? (editingOrder ? 'Salvando alterações...' : 'Analisando e enviando pedido...')
             : !customer ? 'Fazer login para pedir'
-            : !selectedDate ? 'Selecione a data de entrega'
+            : (!selectedDate && !editingOrder?.limitedMode) ? 'Selecione a data de entrega'
             : editingOrder ? 'Salvar alterações'
             : 'Finalizar pedido'}
         </button>

@@ -30,15 +30,22 @@ function todayISO() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())
 }
 
-// Cliente pode editar enquanto: status PENDING, sem comprovante, e ainda
-// nao chegou o dia da entrega (hoje < data de entrega). No dia da entrega,
-// nao permite editar.
+// Cliente pode editar enquanto:
+// - Status PENDING (sem comprovante) → edicao completa
+// - Status RESERVATION (com comprovante anexado, aguardando verificacao) →
+//   edicao LIMITADA: so observacoes e fotos de inspiracao
+// Em ambos os casos, ainda nao chegou o dia da entrega (hoje < data).
 function canEditOrder(order) {
-  if (order.status !== 'PENDING') return false
-  if (order.paymentProof) return false
+  if (order.status !== 'PENDING' && order.status !== 'RESERVATION') return false
   const deliveryISO = extractDeliveryDateISO(order.estimatedDeliveryDate)
   if (!deliveryISO) return false
   return todayISO() < deliveryISO
+}
+
+// Modo limitado: pedido ja com comprovante. So observacoes e fotos de
+// inspiracao podem ser alteradas.
+function isLimitedEdit(order) {
+  return !!order.paymentProof
 }
 
 function fmtBRL(value) {
@@ -375,7 +382,11 @@ function OrderCard({ order, slug, store, onProofUpdate, onLoadForEdit }) {
           <div className="bg-white w-full max-w-sm rounded-2xl shadow-xl p-5" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-base font-bold text-gray-800 mb-2">Editar pedido #{String(order.orderNumber).padStart(5, '0')}?</h3>
             <p className="text-sm text-gray-600 mb-4">
-              Deseja realmente editar esse pedido? O pedido vai voltar pro seu carrinho. Você pode alterar até o <strong>dia anterior à entrega</strong> OU até enviar o comprovante de pagamento — no dia da entrega o pedido fica bloqueado.
+              {isLimitedEdit(order) ? (
+                <>Como você já enviou o comprovante, só pode alterar as <strong>observações</strong> e as <strong>fotos de inspiração</strong>. Itens, valor e dados de entrega ficam congelados. Deseja continuar?</>
+              ) : (
+                <>Deseja realmente editar esse pedido? O pedido vai voltar pro seu carrinho. Você pode alterar até o <strong>dia anterior à entrega</strong> OU até enviar o comprovante de pagamento — no dia da entrega o pedido fica bloqueado.</>
+              )}
             </p>
             <div className="flex gap-2">
               <button
@@ -475,6 +486,9 @@ export default function StoreMyOrders() {
       deliveryZipCode: order.deliveryZipCode || '',
       deliveryFee: order.deliveryFee ? Number(order.deliveryFee) : 0,
       estimatedDeliveryDate: order.estimatedDeliveryDate || null,
+      // modo limitado: cliente ja anexou comprovante. So permite editar
+      // notes e fotos de inspiracao. Frontend trava os demais inputs.
+      limitedMode: isLimitedEdit(order),
     }
     sessionStorage.setItem(`zapcakes_editing_order_${slug}`, JSON.stringify(snapshot))
     navigate(`/loja/${slug}/carrinho`)
