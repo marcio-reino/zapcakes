@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import api from '../../services/api.js'
 import toast from 'react-hot-toast'
 import ConfirmModal from '../../components/ConfirmModal.jsx'
 import { FiCheckCircle, FiImage, FiFile, FiX, FiXCircle, FiTruck, FiDollarSign } from 'react-icons/fi'
+
+const PAGE_SIZE = 20
 
 const padId = (id) => String(id).padStart(5, '0')
 
@@ -29,15 +31,21 @@ const statusColors = {
 export default function AdminOrders() {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMore, setHasMore] = useState(true)
   const [proofModal, setProofModal] = useState(null)
   const [cancelConfirm, setCancelConfirm] = useState(null)
+  const sentinelRef = useRef(null)
+  const pagesLoadedRef = useRef(1)
 
   useEffect(() => { loadOrders() }, [])
 
   async function loadOrders() {
     try {
-      const { data } = await api.get('/orders')
+      const { data } = await api.get('/orders', { params: { limit: PAGE_SIZE } })
       setOrders(data)
+      setHasMore(data.length === PAGE_SIZE)
+      pagesLoadedRef.current = 1
     } catch {
       toast.error('Erro ao carregar pedidos')
     } finally {
@@ -45,11 +53,47 @@ export default function AdminOrders() {
     }
   }
 
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore || orders.length === 0) return
+    setLoadingMore(true)
+    try {
+      const lastId = orders[orders.length - 1].id
+      const { data } = await api.get('/orders', { params: { limit: PAGE_SIZE, cursor: lastId } })
+      setOrders((prev) => [...prev, ...data])
+      setHasMore(data.length === PAGE_SIZE)
+      pagesLoadedRef.current += 1
+    } catch {
+      toast.error('Erro ao carregar mais pedidos')
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [orders, loadingMore, hasMore])
+
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el || !hasMore) return
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) loadMore()
+    }, { rootMargin: '400px' })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [loadMore, hasMore])
+
+  async function refreshLoaded() {
+    try {
+      const { data } = await api.get('/orders', { params: { limit: pagesLoadedRef.current * PAGE_SIZE } })
+      setOrders(data)
+      setHasMore(data.length === pagesLoadedRef.current * PAGE_SIZE)
+    } catch {
+      toast.error('Erro ao recarregar pedidos')
+    }
+  }
+
   async function updateStatus(id, status) {
     try {
       await api.put(`/orders/${id}/status`, { status })
       toast.success('Status atualizado!')
-      loadOrders()
+      refreshLoaded()
     } catch {
       toast.error('Erro ao atualizar status')
     }
@@ -60,7 +104,7 @@ export default function AdminOrders() {
       await api.put(`/orders/${id}/verify-proof`)
       toast.success('Comprovante verificado! Pedido confirmado.')
       setProofModal(null)
-      loadOrders()
+      refreshLoaded()
     } catch {
       toast.error('Erro ao verificar comprovante')
     }
@@ -70,7 +114,7 @@ export default function AdminOrders() {
     try {
       await api.put(`/orders/${id}/confirm-payment`)
       toast.success('Pagamento confirmado! Pedido confirmado.')
-      loadOrders()
+      refreshLoaded()
     } catch {
       toast.error('Erro ao confirmar pagamento')
     }
@@ -81,7 +125,7 @@ export default function AdminOrders() {
       await api.put(`/orders/${id}/cancel`)
       toast.success('Pedido cancelado. Cliente notificado.')
       setCancelConfirm(null)
-      loadOrders()
+      refreshLoaded()
     } catch {
       toast.error('Erro ao cancelar pedido')
     }
@@ -244,6 +288,16 @@ export default function AdminOrders() {
         })}
 
         {orders.length === 0 && <p className="text-gray-500 dark:text-gray-400 text-center py-8">Nenhum pedido encontrado.</p>}
+
+        {orders.length > 0 && hasMore && (
+          <div ref={sentinelRef} className="py-6 text-center text-sm text-gray-500 dark:text-gray-400">
+            {loadingMore ? 'Carregando mais pedidos...' : ''}
+          </div>
+        )}
+
+        {orders.length > 0 && !hasMore && (
+          <p className="py-6 text-center text-sm text-gray-400 dark:text-gray-500">Fim da lista</p>
+        )}
       </div>
 
       {/* Modal de visualização do comprovante */}

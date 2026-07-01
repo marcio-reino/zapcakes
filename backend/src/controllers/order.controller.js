@@ -8,8 +8,11 @@ const padNum = (n) => String(n).padStart(5, '0')
 export class OrderController {
   async list(request, reply) {
     const where = { userId: request.user.id }
-    const { status } = request.query
+    const { status, limit, cursor } = request.query
     if (status) where.status = status
+
+    const take = limit ? Math.min(Math.max(Number(limit), 1), 100) : undefined
+    const cursorId = cursor ? Number(cursor) : null
 
     const orders = await prisma.order.findMany({
       where,
@@ -17,7 +20,9 @@ export class OrderController {
         items: { include: { product: true, attachments: true, additionals: true } },
         customer: { select: { id: true, name: true, phone: true } },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      ...(take ? { take } : {}),
+      ...(cursorId ? { cursor: { id: cursorId }, skip: 1 } : {}),
     })
     return orders
   }
