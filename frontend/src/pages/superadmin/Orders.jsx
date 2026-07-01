@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import api from '../../services/api.js'
 import toast from 'react-hot-toast'
 import { FiSearch, FiRefreshCw, FiChevronDown, FiChevronUp, FiMessageSquare, FiCalendar, FiExternalLink, FiUser } from 'react-icons/fi'
 import DatePicker from '../../components/DatePicker.jsx'
 import OrderNotes from '../../components/OrderNotes.jsx'
+
+const PAGE_SIZE = 20
 
 const BRL = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const padId = (id) => String(id).padStart(5, '0')
@@ -37,6 +39,8 @@ export default function SuperadminOrders() {
   const [filterAccount, setFilterAccount] = useState('')
   const [filterDate, setFilterDate] = useState('')
   const [expanded, setExpanded] = useState(new Set())
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  const sentinelRef = useRef(null)
 
   useEffect(() => { load() }, [])
 
@@ -92,6 +96,25 @@ export default function SuperadminOrders() {
     },
     { count: 0, total: 0 },
   )
+
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE)
+  }, [appliedSearch, filterStatus, filterAccount, filterDate])
+
+  const visible = filtered.slice(0, visibleCount)
+  const hasMore = visibleCount < filtered.length
+
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el || !hasMore) return
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) {
+        setVisibleCount((c) => Math.min(c + PAGE_SIZE, filtered.length))
+      }
+    }, { rootMargin: '400px' })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [hasMore, filtered.length])
 
   if (loading) return <p className="text-gray-500 dark:text-gray-400">Carregando...</p>
 
@@ -184,7 +207,7 @@ export default function SuperadminOrders() {
       )}
 
       <div className="space-y-3">
-        {filtered.map((o) => {
+        {visible.map((o) => {
           const isOpen = expanded.has(o.id)
           const storeName = o.user?.account?.companyName || o.user?.name || '?'
           const storeSlug = o.user?.account?.slug
@@ -325,6 +348,18 @@ export default function SuperadminOrders() {
             </div>
           )
         })}
+
+        {hasMore && (
+          <div ref={sentinelRef} className="py-6 text-center text-sm text-gray-500 dark:text-gray-400">
+            Carregando mais pedidos...
+          </div>
+        )}
+
+        {!hasMore && visible.length > 0 && filtered.length > PAGE_SIZE && (
+          <p className="py-6 text-center text-sm text-gray-400 dark:text-gray-500">
+            Exibindo {visible.length} de {filtered.length}
+          </p>
+        )}
       </div>
     </div>
   )
