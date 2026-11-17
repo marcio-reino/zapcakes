@@ -7,6 +7,7 @@ import openai from '../config/openai.js'
 import evolutionApi from '../config/evolution.js'
 import { resolveItemAdditionals, persistOrderItemAdditionals } from '../services/order.service.js'
 import { liveEventWhere, sellableWhere } from '../services/catalog-event.service.js'
+import { IMAGE_PRESETS } from '../services/image-optimizer.service.js'
 
 const publicEventSelect = { id: true, name: true, slug: true, description: true, bannerUrl: true, startsAt: true, endsAt: true }
 
@@ -1291,7 +1292,7 @@ Seja tolerante — aceite imagens de paletas de cores, decorações, temas de fe
     console.log(`[Comprovante] Pedido #${order.id} - Buffer size: ${fileBuffer.length} bytes, mimetype: ${file.mimetype}`)
 
     const folder = AccountService.getUploadFolder(account.id, 'payment-proofs')
-    const result = await UploadService.uploadBuffer(fileBuffer, file.mimetype, folder)
+    const result = await UploadService.uploadBuffer(fileBuffer, file.mimetype, folder, IMAGE_PRESETS.document)
 
     // Valor esperado: reservation (valor real da reserva) ou total
     const expectedAmount = order.reservation ? Number(order.reservation) : Number(order.total)
