@@ -48,6 +48,7 @@ import StorePrivacidade from './pages/store/StorePrivacidade.jsx'
 
 // Client store settings
 import StoreSite from './pages/client/StoreSite.jsx'
+import CatalogEvents from './pages/client/CatalogEvents.jsx'
 
 // Superadmin pages
 import SuperadminDashboard from './pages/superadmin/Dashboard.jsx'
@@ -115,6 +116,7 @@ export default function App() {
         <Route path="shopping-lists" element={<ShoppingLists />} />
         <Route path="recipes" element={<Recipes />} />
         <Route path="store-site" element={<StoreSite />} />
+        <Route path="catalog-events" element={<CatalogEvents />} />
       </Route>
 
       {/* Superadmin Routes */}
@@ -140,6 +142,7 @@ export default function App() {
         <Route path="alterar-senha" element={<StoreChangePassword />} />
         <Route path="termos-de-uso" element={<StoreTermos />} />
         <Route path="privacidade" element={<StorePrivacidade />} />
+        <Route path=":eventSlug" element={<StoreFront />} />
       </Route>
 
       {/* Redirect */}

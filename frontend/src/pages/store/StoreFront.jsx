@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { useOutletContext } from 'react-router-dom'
-import { FiPlus, FiMinus, FiSearch, FiX, FiPackage } from 'react-icons/fi'
+import { useOutletContext, useParams, Link } from 'react-router-dom'
+import { FiPlus, FiMinus, FiSearch, FiX, FiPackage, FiArrowLeft, FiChevronRight } from 'react-icons/fi'
 import storeApi from '../../services/storeApi.js'
 import { useCart } from '../../hooks/useCart.jsx'
 import toast from 'react-hot-toast'
@@ -263,11 +263,44 @@ function ComboCard({ combo, onOpen }) {
   )
 }
 
+function fmtDate(value) {
+  return new Date(value).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
+}
+
+function EventBanners({ events, slug }) {
+  if (!events?.length) return null
+  return (
+    <section className="mb-5 space-y-3">
+      {events.map(ev => (
+        <Link
+          key={ev.id}
+          to={`/loja/${slug}/${ev.slug}`}
+          className="block bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100 hover:shadow-md transition-shadow"
+        >
+          {ev.bannerUrl && <img src={ev.bannerUrl} alt={ev.name} className="w-full aspect-[3/1] object-cover" />}
+          <div className="flex items-center justify-between gap-3 px-4 py-3">
+            <div className="min-w-0">
+              <p className="font-bold text-gray-800">🎉 {ev.name}</p>
+              {ev.endsAt && <p className="text-sm text-gray-500">Encomendas até {fmtDate(ev.endsAt)}</p>}
+            </div>
+            <span className="flex items-center gap-1 text-sm font-semibold text-green-600 shrink-0">
+              Ver catálogo <FiChevronRight size={16} />
+            </span>
+          </div>
+        </Link>
+      ))}
+    </section>
+  )
+}
+
 export default function StoreFront() {
   const { store, slug } = useOutletContext()
+  const { eventSlug } = useParams()
   const [categories, setCategories] = useState([])
   const [products, setProducts] = useState([])
   const [combos, setCombos] = useState([])
+  const [event, setEvent] = useState(null)
+  const [eventNotFound, setEventNotFound] = useState(false)
   const [selectedCategory, setSelectedCategory] = useState(null)
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
@@ -275,12 +308,31 @@ export default function StoreFront() {
   const { count, total } = useCart()
 
   useEffect(() => {
-    Promise.all([
-      storeApi.get(`/store/${slug}/categories`).then(r => setCategories(r.data)),
-      storeApi.get(`/store/${slug}/products`).then(r => setProducts(r.data)),
-      storeApi.get(`/store/${slug}/combos`).then(r => setCombos(r.data)),
-    ]).finally(() => setLoading(false))
-  }, [slug])
+    // Mesma instância é reaproveitada ao navegar entre o catálogo principal e o do evento
+    setLoading(true)
+    setEvent(null)
+    setEventNotFound(false)
+    setSelectedCategory(null)
+    setSearch('')
+    setCategories([])
+    setProducts([])
+    setCombos([])
+
+    const params = eventSlug ? { event: eventSlug } : undefined
+    const loadCatalog = () => Promise.all([
+      storeApi.get(`/store/${slug}/categories`, { params }).then(r => setCategories(r.data)),
+      storeApi.get(`/store/${slug}/products`, { params }).then(r => setProducts(r.data)),
+      storeApi.get(`/store/${slug}/combos`, { params }).then(r => setCombos(r.data)),
+    ])
+
+    const load = eventSlug
+      ? storeApi.get(`/store/${slug}/events/${encodeURIComponent(eventSlug)}`)
+          .then(r => { setEvent(r.data); return loadCatalog() })
+          .catch(() => setEventNotFound(true))
+      : loadCatalog()
+
+    load.finally(() => setLoading(false))
+  }, [slug, eventSlug])
 
   const filtered = products.filter(p => {
     if (selectedCategory && p.categoryId !== selectedCategory) return false
@@ -311,22 +363,55 @@ export default function StoreFront() {
     )
   }
 
+  if (eventNotFound) {
+    return (
+      <div className="max-w-lg mx-auto px-4 py-16 text-center">
+        <p className="text-5xl mb-4">📅</p>
+        <h1 className="text-xl font-bold text-gray-800">Catálogo indisponível</h1>
+        <p className="text-gray-500 mt-2">Este catálogo foi encerrado ou não existe mais.</p>
+        <Link
+          to={`/loja/${slug}`}
+          className="inline-flex items-center justify-center gap-2 mt-6 w-full sm:w-auto px-6 py-3.5 bg-green-600 text-white font-semibold rounded-xl hover:bg-green-700 transition-colors"
+        >
+          <FiArrowLeft size={18} /> Ver produtos da loja
+        </Link>
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-lg mx-auto px-4 pb-24">
-      {/* Store info */}
-      <div className="text-center py-5">
-        {store.logoUrl ? (
-          <img src={store.logoUrl} alt="" className="w-20 h-20 rounded-full object-cover mx-auto mb-3 shadow-md" />
-        ) : (
-          <div className="w-20 h-20 rounded-full bg-green-100 mx-auto mb-3 flex items-center justify-center shadow-md">
-            <span className="text-green-600 font-bold text-3xl">{store.companyName?.[0] || 'Z'}</span>
+      {event ? (
+        <div className="py-4">
+          <Link to={`/loja/${slug}`} className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-green-600 mb-3 py-1">
+            <FiArrowLeft size={16} /> Catálogo completo da loja
+          </Link>
+          {event.bannerUrl && (
+            <img src={event.bannerUrl} alt={event.name} className="w-full aspect-[3/1] object-cover rounded-xl shadow-sm mb-3" />
+          )}
+          <h1 className="text-xl font-bold text-gray-800">{event.name}</h1>
+          {event.endsAt && <p className="text-sm text-gray-500 mt-1">Encomendas até {fmtDate(event.endsAt)}</p>}
+          {event.description && <p className="text-base text-gray-600 mt-2 whitespace-pre-line">{event.description}</p>}
+        </div>
+      ) : (
+        <>
+          {/* Store info */}
+          <div className="text-center py-5">
+            {store.logoUrl ? (
+              <img src={store.logoUrl} alt="" className="w-20 h-20 rounded-full object-cover mx-auto mb-3 shadow-md" />
+            ) : (
+              <div className="w-20 h-20 rounded-full bg-green-100 mx-auto mb-3 flex items-center justify-center shadow-md">
+                <span className="text-green-600 font-bold text-3xl">{store.companyName?.[0] || 'Z'}</span>
+              </div>
+            )}
+            <h1 className="text-xl font-bold text-gray-800">{store.companyName}</h1>
+            {store.city && (
+              <p className="text-sm text-gray-500 mt-1">📍 {store.city}{store.state ? ` - ${store.state}` : ''}</p>
+            )}
           </div>
-        )}
-        <h1 className="text-xl font-bold text-gray-800">{store.companyName}</h1>
-        {store.city && (
-          <p className="text-sm text-gray-500 mt-1">📍 {store.city}{store.state ? ` - ${store.state}` : ''}</p>
-        )}
-      </div>
+          <EventBanners events={store.events} slug={slug} />
+        </>
+      )}
 
       {/* Search + category filter */}
       <div className="sticky top-[60px] z-40 bg-gray-50 pb-3 pt-1">

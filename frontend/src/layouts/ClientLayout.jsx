@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Outlet, Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import { useTheme } from '../contexts/ThemeContext.jsx'
-import { FiHome, FiBriefcase, FiUsers, FiGrid, FiPackage, FiLayers, FiCpu, FiShoppingCart, FiLogOut, FiMoon, FiSun, FiMenu, FiX, FiBox, FiClipboard, FiBookOpen, FiGlobe } from 'react-icons/fi'
+import { FiHome, FiBriefcase, FiUsers, FiGrid, FiPackage, FiLayers, FiCpu, FiShoppingCart, FiLogOut, FiMoon, FiSun, FiMenu, FiX, FiBox, FiClipboard, FiBookOpen, FiGlobe, FiGift } from 'react-icons/fi'
 import logo from '../assets/logo.svg'
 
 const menuItems = [
@@ -12,6 +12,7 @@ const menuItems = [
   { path: '/client/categories', icon: FiGrid, label: 'Categorias' },
   { path: '/client/products', icon: FiPackage, label: 'Produtos' },
   { path: '/client/combos', icon: FiLayers, label: 'Combos' },
+  { path: '/client/catalog-events', icon: FiGift, label: 'Datas Comemorativas' },
   { path: '/client/agent', icon: FiCpu, label: 'Agente' },
   { path: '/client/orders', icon: FiShoppingCart, label: 'Pedidos' },
   { path: '/client/store-site', icon: FiGlobe, label: 'Site' },

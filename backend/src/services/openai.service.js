@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto'
 import { PutObjectCommand } from '@aws-sdk/client-s3'
 import s3Client, { S3_BUCKET } from '../config/s3.js'
 import bcrypt from 'bcryptjs'
+import { liveEventWhere } from './catalog-event.service.js'
 
 // Normaliza telefone: remove não-dígitos e prefixo 55 se necessário
 function normalizePhone(p) {
@@ -222,21 +223,24 @@ const agentTools = [
 export class OpenAiService {
   // Busca catálogo de produtos agrupado por categoria
   async buildCatalog(userId) {
-    const categories = await prisma.category.findMany({
+    const allCategories = await prisma.category.findMany({
       where: { userId, active: true },
       include: {
         products: {
-          where: { active: true },
+          where: { active: true, eventId: null },
           orderBy: { name: 'asc' },
         },
+        _count: { select: { products: { where: { active: true, eventId: { not: null } } } } },
       },
       orderBy: { name: 'asc' },
     })
+    // Categoria cujos produtos são todos de datas comemorativas fica fora do catálogo do WhatsApp
+    const categories = allCategories.filter((c) => c.products.length > 0 || c._count.products === 0)
 
     if (categories.length === 0) return ''
 
     // Verifica se existem combos para incluir na lista
-    const comboCount = await prisma.combo.count({ where: { userId, active: true } })
+    const comboCount = await prisma.combo.count({ where: { userId, active: true, eventId: null } })
 
     let catalog = '\n\n## CATÁLOGO DE PRODUTOS\n\n'
     catalog += 'Quando o cliente perguntar sobre produtos, apresente as categorias numeradas:\n\n'
@@ -310,10 +314,41 @@ export class OpenAiService {
     return catalog
   }
 
+  // Catálogos de datas comemorativas em vigor: o agente só divulga o link, não vende os itens
+  async buildEvents(userId) {
+    const frontendUrl = process.env.FRONTEND_URL
+    if (!frontendUrl) return ''
+
+    const account = await prisma.account.findUnique({
+      where: { userId },
+      select: { slug: true, storeActive: true },
+    })
+    if (!account?.slug || !account.storeActive) return ''
+
+    const events = await prisma.catalogEvent.findMany({
+      where: { userId, ...liveEventWhere() },
+      select: { name: true, slug: true, description: true, endsAt: true },
+      orderBy: [{ endsAt: 'asc' }, { name: 'asc' }],
+    })
+    if (events.length === 0) return ''
+
+    const base = `${frontendUrl.replace(/\/$/, '')}/loja/${account.slug}`
+    let text = '\n\n## CATÁLOGOS DE DATAS COMEMORATIVAS\n\n'
+    text += 'A loja tem catálogos especiais em vigor. Os produtos desses catálogos NÃO estão na lista acima e NÃO podem ser pedidos por aqui: são vendidos apenas pelo link do catálogo.\n'
+    text += 'Quando o cliente perguntar sobre a data comemorativa, encomendas especiais ou novidades, envie o link correspondente:\n\n'
+    for (const ev of events) {
+      text += `- *${ev.name}*: ${base}/${ev.slug}`
+      if (ev.endsAt) text += ` (disponível até ${new Date(ev.endsAt).toLocaleDateString('pt-BR', { timeZone: 'UTC' })})`
+      if (ev.description) text += ` - ${ev.description}`
+      text += '\n'
+    }
+    return text
+  }
+
   // Busca combos ativos
   async buildCombos(userId) {
     const combos = await prisma.combo.findMany({
-      where: { userId, active: true },
+      where: { userId, active: true, eventId: null },
       include: {
         items: {
           include: { product: true },
@@ -382,7 +417,7 @@ export class OpenAiService {
       },
       include: {
         products: {
-          where: { active: true },
+          where: { active: true, eventId: null },
           orderBy: { name: 'asc' },
         },
       },
@@ -418,7 +453,7 @@ export class OpenAiService {
     const lower = termo.toLowerCase()
 
     const candidates = await prisma.product.findMany({
-      where: { userId, active: true },
+      where: { userId, active: true, eventId: null },
     })
     const product =
       candidates.find((p) => p.name.toLowerCase() === lower) ||
@@ -567,7 +602,7 @@ export class OpenAiService {
     const number = remoteJid.replace('@s.whatsapp.net', '')
 
     const combos = await prisma.combo.findMany({
-      where: { userId, active: true },
+      where: { userId, active: true, eventId: null },
       include: {
         items: {
           include: { product: true },
@@ -907,6 +942,7 @@ export class OpenAiService {
               where: {
                 userId,
                 active: true,
+                eventId: null,
                 name: { contains: item.productName },
               },
             })
@@ -1614,7 +1650,7 @@ export class OpenAiService {
     let prompt = 'Você é um agente de atendimento ao cliente via WhatsApp.\n\n'
 
     prompt += '## REGRAS GERAIS (OBRIGATÓRIAS)\n\n'
-    prompt += '1. NUNCA envie, sugira ou invente URLs, links, domínios ou endereços web de qualquer tipo (ex: "app.zapcakes.com", "zapcakes.com/loja/xyz", "site da loja", "acesse nosso site"). Você SÓ pode mencionar links que apareçam literalmente nas instruções do agente abaixo (categorias GREETING, COMPANY, ORDERS, PRODUCTS, QUESTIONS, CLOSING) ou nas "TAXAS DE ENTREGA". Se nenhum link foi cadastrado, não sugira nenhum.\n'
+    prompt += '1. NUNCA envie, sugira ou invente URLs, links, domínios ou endereços web de qualquer tipo (ex: "app.zapcakes.com", "zapcakes.com/loja/xyz", "site da loja", "acesse nosso site"). Você SÓ pode mencionar links que apareçam literalmente nas instruções do agente abaixo (categorias GREETING, COMPANY, ORDERS, PRODUCTS, QUESTIONS, CLOSING), nas "TAXAS DE ENTREGA" ou na seção "CATÁLOGOS DE DATAS COMEMORATIVAS". Se nenhum link foi cadastrado, não sugira nenhum.\n'
     prompt += '2. NUNCA ofereça ao cliente "fazer o pedido pelo site" nem redirecione para outro canal. Todo atendimento deve ser feito aqui no WhatsApp, usando as tools disponíveis (buscar_cliente, criar_pedido, etc).\n'
     prompt += '3. NUNCA invente informações que não estejam explícitas no catálogo, nos adicionais, nas instruções do agente, nas zonas de entrega ou nos dados do cliente retornados pelas tools.\n'
     prompt += '4. COMPROVANTE DE PAGAMENTO: se o cliente enviar uma imagem que pareça um comprovante de PIX/transferência (valor, data, "enviado", "transferido", "comprovante", nome do beneficiário), chame OBRIGATORIAMENTE a tool "registrar_pagamento" passando o telefone do cliente (customerPhone) e o valor identificado na imagem (proofAmount). Isso funciona MESMO se você não tem memória da conversa anterior — a tool busca automaticamente o último pedido pendente do cliente pelo telefone. NÃO peça ao cliente para "mandar de novo o pedido" nem pergunte de qual pedido é o comprovante.\n\n'
@@ -1659,6 +1695,8 @@ export class OpenAiService {
     // Adiciona combos
     const combos = await this.buildCombos(userId)
     prompt += combos
+
+    prompt += await this.buildEvents(userId)
 
     // Instruções de fluxo de pedido
     prompt += `\n\n## FLUXO DE PEDIDO\n\n`

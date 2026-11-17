@@ -26,6 +26,7 @@ import { recipeRoutes } from './routes/recipe.routes.js'
 import { dashboardRoutes } from './routes/dashboard.routes.js'
 import { superadminRoutes } from './routes/superadmin.routes.js'
 import { storeRoutes } from './routes/store.routes.js'
+import { catalogEventRoutes } from './routes/catalog-event.routes.js'
 import { ensureBucketPublicRead } from './config/s3.js'
 
 const app = Fastify({ logger: true, bodyLimit: 20 * 1024 * 1024 })
@@ -87,6 +88,7 @@ await app.register(recipeRoutes, { prefix: '/api/recipes' })
 await app.register(dashboardRoutes, { prefix: '/api/dashboard' })
 await app.register(superadminRoutes, { prefix: '/api/superadmin' })
 await app.register(storeRoutes, { prefix: '/api/store' })
+await app.register(catalogEventRoutes, { prefix: '/api/catalog-events' })
 
 // Versão e health check
 const VERSION = '1.7.0'

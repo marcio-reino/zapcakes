@@ -6,6 +6,23 @@ import { AccountService } from '../services/account.service.js'
 import openai from '../config/openai.js'
 import evolutionApi from '../config/evolution.js'
 import { resolveItemAdditionals, persistOrderItemAdditionals } from '../services/order.service.js'
+import { liveEventWhere, sellableWhere } from '../services/catalog-event.service.js'
+
+const publicEventSelect = { id: true, name: true, slug: true, description: true, bannerUrl: true, startsAt: true, endsAt: true }
+
+// Sem ?event= → catálogo principal (eventId null). Com ?event=slug → só itens do evento em vigor.
+async function resolveCatalogScope(userId, eventSlug, reply) {
+  if (!eventSlug) return { eventId: null }
+  const event = await prisma.catalogEvent.findFirst({
+    where: { userId, slug: String(eventSlug), ...liveEventWhere() },
+    select: { id: true },
+  })
+  if (!event) {
+    reply.status(404).send({ error: 'Catálogo não encontrado ou encerrado' })
+    return null
+  }
+  return { eventId: event.id }
+}
 
 // Armazena códigos de recuperação: { `${userId}_${phone}`: { customerId, code, expiresAt } }
 const resetCodes = new Map()
@@ -35,6 +52,7 @@ export class StoreController {
     const account = await prisma.account.findFirst({
       where: { slug, storeActive: true },
       select: {
+        userId: true,
         companyName: true, logoUrl: true, useReservation: true, reservationPercent: true, deliveryEnabled: true, pixKey: true,
         user: {
           select: {
@@ -46,7 +64,14 @@ export class StoreController {
     })
     if (!account) return reply.status(404).send({ error: 'Loja não encontrada' })
 
+    const events = await prisma.catalogEvent.findMany({
+      where: { userId: account.userId, ...liveEventWhere() },
+      select: publicEventSelect,
+      orderBy: [{ endsAt: 'asc' }, { name: 'asc' }],
+    })
+
     return {
+      events,
       companyName: account.companyName,
       logoUrl: account.logoUrl,
       phone: account.user.phone,
@@ -60,17 +85,33 @@ export class StoreController {
     }
   }
 
-  // GET /api/store/:slug/categories
+  // GET /api/store/:slug/events/:eventSlug — dados do catálogo de data comemorativa
+  async getEvent(request, reply) {
+    const { slug, eventSlug } = request.params
+    const account = await resolveSlug(slug, reply)
+    if (!account) return
+
+    const event = await prisma.catalogEvent.findFirst({
+      where: { userId: account.userId, slug: eventSlug, ...liveEventWhere() },
+      select: publicEventSelect,
+    })
+    if (!event) return reply.status(404).send({ error: 'Catálogo não encontrado ou encerrado' })
+    return event
+  }
+
+  // GET /api/store/:slug/categories?event=slug
   async getCategories(request, reply) {
     const { slug } = request.params
     const account = await resolveSlug(slug, reply)
     if (!account) return
+    const scope = await resolveCatalogScope(account.userId, request.query.event, reply)
+    if (!scope) return
 
     const categories = await prisma.category.findMany({
       where: { userId: account.userId, active: true },
       select: {
         id: true, name: true,
-        _count: { select: { products: { where: { active: true } } } },
+        _count: { select: { products: { where: { active: true, eventId: scope.eventId } } } },
       },
       orderBy: { name: 'asc' },
     })
@@ -78,14 +119,16 @@ export class StoreController {
     return categories.filter(c => c._count.products > 0)
   }
 
-  // GET /api/store/:slug/products?categoryId=N
+  // GET /api/store/:slug/products?categoryId=N&event=slug
   async getProducts(request, reply) {
     const { slug } = request.params
     const { categoryId } = request.query
     const account = await resolveSlug(slug, reply)
     if (!account) return
+    const scope = await resolveCatalogScope(account.userId, request.query.event, reply)
+    if (!scope) return
 
-    const where = { userId: account.userId, active: true }
+    const where = { userId: account.userId, active: true, eventId: scope.eventId }
     if (categoryId) where.categoryId = Number(categoryId)
 
     const products = await prisma.product.findMany({
@@ -128,14 +171,16 @@ export class StoreController {
     return zones
   }
 
-  // GET /api/store/:slug/combos
+  // GET /api/store/:slug/combos?event=slug
   async getCombos(request, reply) {
     const { slug } = request.params
     const account = await resolveSlug(slug, reply)
     if (!account) return
+    const scope = await resolveCatalogScope(account.userId, request.query.event, reply)
+    if (!scope) return
 
     const combos = await prisma.combo.findMany({
-      where: { userId: account.userId, active: true },
+      where: { userId: account.userId, active: true, eventId: scope.eventId },
       include: {
         items: {
           include: {
@@ -389,11 +434,11 @@ export class StoreController {
     if (items?.length) {
       const productIds = items.map(i => i.productId)
       const products = await prisma.product.findMany({
-        where: { id: { in: productIds }, userId, active: true },
+        where: { id: { in: productIds }, userId, active: true, ...sellableWhere() },
       })
 
       if (products.length !== productIds.length) {
-        return reply.status(400).send({ error: 'Um ou mais produtos não encontrados' })
+        return reply.status(400).send({ error: 'Um ou mais produtos não estão mais disponíveis (o catálogo pode ter sido encerrado). Revise o carrinho.' })
       }
 
       try {
@@ -422,7 +467,7 @@ export class StoreController {
     if (combos?.length) {
       const comboIds = combos.map(c => c.comboId)
       const dbCombos = await prisma.combo.findMany({
-        where: { id: { in: comboIds }, userId, active: true },
+        where: { id: { in: comboIds }, userId, active: true, ...sellableWhere() },
         include: {
           items: {
             include: { product: true },
@@ -436,7 +481,7 @@ export class StoreController {
       })
 
       if (dbCombos.length !== comboIds.length) {
-        return reply.status(400).send({ error: 'Um ou mais combos não encontrados' })
+        return reply.status(400).send({ error: 'Um ou mais combos não estão mais disponíveis (o catálogo pode ter sido encerrado). Revise o carrinho.' })
       }
 
       for (const comboEntry of combos) {
@@ -757,10 +802,15 @@ export class StoreController {
       }
     }
 
-    // Carrega produtos novos pra recalcular preco usando snapshot atual do catalogo
+    // Carrega produtos novos pra recalcular preco usando snapshot atual do catalogo.
+    // Itens que ja estavam no pedido continuam aceitos mesmo se o catalogo do evento encerrou.
     const productIds = [...new Set(items.map(i => Number(i.productId)).filter(Boolean))]
+    const existingProductIds = order.items.map(oi => oi.productId)
     const products = await prisma.product.findMany({
-      where: { id: { in: productIds }, userId, active: true },
+      where: {
+        id: { in: productIds }, userId, active: true,
+        OR: [{ id: { in: existingProductIds } }, sellableWhere()],
+      },
     })
     if (products.length !== productIds.length) {
       return reply.status(400).send({ error: 'Um ou mais produtos não encontrados ou inativos' })

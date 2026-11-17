@@ -34,7 +34,7 @@ async function expandSimulatorMarkers(text, userId) {
       where: { userId, active: true, name: { contains: catName } },
       include: {
         products: {
-          where: { active: true },
+          where: { active: true, eventId: null },
           orderBy: { name: 'asc' },
           include: {
             productAdditionals: {
@@ -78,7 +78,7 @@ async function expandSimulatorMarkers(text, userId) {
   // [MOSTRAR_COMBOS]
   if (/\[MOSTRAR_COMBOS\]/i.test(out)) {
     const combos = await prisma.combo.findMany({
-      where: { userId, active: true },
+      where: { userId, active: true, eventId: null },
       include: { items: { include: { product: true }, orderBy: { sortOrder: 'asc' } } },
       orderBy: { name: 'asc' },
     })

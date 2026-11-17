@@ -43,6 +43,7 @@ model User {
   notificationsSent     Notification[] @relation("NotificationSender")
   deliveryZones         DeliveryZone[]
   additionals           Additional[]
+  catalogEvents         CatalogEvent[]
 
   @@map("users")
 }
@@ -285,6 +286,7 @@ model Product {
   inspirationInstruction  String?  @map("inspiration_instruction") @db.Text
   maxInspirationImages    Int      @default(3) @map("max_inspiration_images")
   recipeId                Int?     @map("recipe_id")
+  eventId                 Int?     @map("event_id")
   active                  Boolean  @default(true)
   createdAt               DateTime @default(now()) @map("created_at")
   updatedAt               DateTime @updatedAt @map("updated_at")
@@ -292,6 +294,7 @@ model Product {
   user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   category   Category    @relation(fields: [categoryId], references: [id])
   recipe     Recipe?     @relation(fields: [recipeId], references: [id])
+  event      CatalogEvent? @relation(fields: [eventId], references: [id], onDelete: SetNull)
   orderItems OrderItem[]
   comboItems ComboItem[]
   productAdditionals ProductAdditional[]
@@ -307,15 +310,39 @@ model Combo {
   description String?  @db.Text
   discount    Decimal  @default(0) @db.Decimal(10, 2) // valor do desconto
   imageUrl    String?  @map("image_url") @db.Text
+  eventId     Int?     @map("event_id")
   active      Boolean  @default(true)
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event              CatalogEvent?       @relation(fields: [eventId], references: [id], onDelete: SetNull)
   items              ComboItem[]
   comboAdditionals   ComboAdditional[]
 
   @@map("combos")
+}
+
+// Catálogos de datas comemorativas (Natal, Páscoa...). Itens com eventId só aparecem no catálogo do evento.
+model CatalogEvent {
+  id          Int       @id @default(autoincrement())
+  userId      Int       @map("user_id")
+  name        String    @db.VarChar(120)
+  slug        String    @db.VarChar(60)
+  description String?   @db.Text
+  bannerUrl   String?   @map("banner_url") @db.Text
+  startsAt    DateTime? @map("starts_at") @db.Date
+  endsAt      DateTime? @map("ends_at") @db.Date
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  products Product[]
+  combos   Combo[]
+
+  @@unique([userId, slug])
+  @@map("catalog_events")
 }
 
 // Itens do combo

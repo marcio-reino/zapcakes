@@ -5,6 +5,7 @@ export async function storeRoutes(app) {
 
   // Públicos (sem auth)
   app.get('/:slug', controller.getStore)
+  app.get('/:slug/events/:eventSlug', controller.getEvent)
   app.get('/:slug/categories', controller.getCategories)
   app.get('/:slug/products', controller.getProducts)
   app.get('/:slug/combos', controller.getCombos)

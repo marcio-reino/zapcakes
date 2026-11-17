@@ -1,4 +1,7 @@
 import prisma from '../config/database.js'
+import { resolveOwnedEventId } from '../services/catalog-event.service.js'
+
+const eventSelect = { id: true, name: true, slug: true }
 
 const productAdditionalsInclude = {
   productAdditionals: {
@@ -48,15 +51,18 @@ async function syncProductAdditionals(userId, productId, additionalIds) {
 
 export class ProductController {
   async list(request, reply) {
-    const { categoryId, active } = request.query
+    const { categoryId, active, eventId } = request.query
     const where = { userId: request.user.id }
     if (categoryId) where.categoryId = Number(categoryId)
     if (active !== undefined) where.active = active === 'true'
+    if (eventId === 'none') where.eventId = null
+    else if (eventId) where.eventId = Number(eventId)
 
     const products = await prisma.product.findMany({
       where,
       include: {
         category: true,
+        event: { select: eventSelect },
         recipe: {
           include: {
             items: { include: { material: { select: { id: true, name: true, unit: true, basePrice: true } } } },
@@ -72,6 +78,13 @@ export class ProductController {
   async create(request, reply) {
     const { categoryId, name, description, price, imageUrl, minOrder, maxOrder, allowInspirationImages, inspirationInstruction, maxInspirationImages, recipeId, additionalIds } = request.body
 
+    let eventId
+    try {
+      eventId = await resolveOwnedEventId(request.user.id, request.body.eventId)
+    } catch (err) {
+      return reply.status(err.statusCode || 500).send({ error: err.message })
+    }
+
     const product = await prisma.product.create({
       data: {
         userId: request.user.id, categoryId, name, description, price, imageUrl,
@@ -81,6 +94,7 @@ export class ProductController {
         inspirationInstruction: inspirationInstruction || null,
         maxInspirationImages: maxInspirationImages || 3,
         recipeId: recipeId || null,
+        eventId: eventId ?? null,
       },
     })
 
@@ -94,7 +108,7 @@ export class ProductController {
 
     const created = await prisma.product.findUnique({
       where: { id: product.id },
-      include: { category: true, ...productAdditionalsInclude },
+      include: { category: true, event: { select: eventSelect }, ...productAdditionalsInclude },
     })
     return reply.status(201).send(mapAdditionals(created))
   }
@@ -105,6 +119,7 @@ export class ProductController {
       where: { id: Number(id), userId: request.user.id },
       include: {
         category: true,
+        event: { select: eventSelect },
         recipe: {
           include: {
             items: { include: { material: { select: { id: true, name: true, unit: true, basePrice: true } } } },
@@ -132,9 +147,16 @@ export class ProductController {
       return reply.status(404).send({ error: 'Produto não encontrado' })
     }
 
+    let eventId
+    try {
+      eventId = await resolveOwnedEventId(request.user.id, request.body.eventId)
+    } catch (err) {
+      return reply.status(err.statusCode || 500).send({ error: err.message })
+    }
+
     await prisma.product.update({
       where: { id: Number(id) },
-      data: { categoryId, name, description, price, imageUrl, active, minOrder, maxOrder, allowInspirationImages, inspirationInstruction, maxInspirationImages, recipeId: recipeId !== undefined ? (recipeId || null) : undefined },
+      data: { categoryId, name, description, price, imageUrl, active, minOrder, maxOrder, allowInspirationImages, inspirationInstruction, maxInspirationImages, recipeId: recipeId !== undefined ? (recipeId || null) : undefined, eventId },
     })
 
     if (Array.isArray(additionalIds)) {
@@ -147,7 +169,7 @@ export class ProductController {
 
     const updated = await prisma.product.findUnique({
       where: { id: product.id },
-      include: { category: true, ...productAdditionalsInclude },
+      include: { category: true, event: { select: eventSelect }, ...productAdditionalsInclude },
     })
     return mapAdditionals(updated)
   }

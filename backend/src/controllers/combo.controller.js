@@ -1,9 +1,11 @@
 import prisma from '../config/database.js'
+import { resolveOwnedEventId } from '../services/catalog-event.service.js'
 
 const comboInclude = {
+  event: { select: { id: true, name: true, slug: true } },
   items: {
     orderBy: { sortOrder: 'asc' },
-    include: { product: { select: { id: true, name: true, price: true, imageUrl: true } } },
+    include: { product: { select: { id: true, name: true, price: true, imageUrl: true, eventId: true } } },
   },
   comboAdditionals: {
     where: { additional: { active: true } },
@@ -52,8 +54,13 @@ async function syncComboAdditionals(userId, comboId, additionalIds) {
 
 export class ComboController {
   async list(request, reply) {
+    const { eventId } = request.query
+    const where = { userId: request.user.id }
+    if (eventId === 'none') where.eventId = null
+    else if (eventId) where.eventId = Number(eventId)
+
     const combos = await prisma.combo.findMany({
-      where: { userId: request.user.id },
+      where,
       include: comboInclude,
       orderBy: { name: 'asc' },
     })
@@ -86,9 +93,17 @@ export class ComboController {
       return reply.status(400).send({ error: 'Um ou mais produtos não encontrados' })
     }
 
+    let eventId
+    try {
+      eventId = await resolveOwnedEventId(request.user.id, request.body.eventId)
+    } catch (err) {
+      return reply.status(err.statusCode || 500).send({ error: err.message })
+    }
+
     const combo = await prisma.combo.create({
       data: {
         userId: request.user.id,
+        eventId: eventId ?? null,
         name,
         description,
         discount: discount || 0,
@@ -141,6 +156,13 @@ export class ComboController {
       return reply.status(404).send({ error: 'Combo não encontrado' })
     }
 
+    let eventId
+    try {
+      eventId = await resolveOwnedEventId(request.user.id, request.body.eventId)
+    } catch (err) {
+      return reply.status(err.statusCode || 500).send({ error: err.message })
+    }
+
     // Verifica produtos se items foram enviados
     if (items) {
       if (items.length < 2) {
@@ -171,7 +193,7 @@ export class ComboController {
 
       await tx.combo.update({
         where: { id: Number(id) },
-        data: { name, description, discount, imageUrl, active },
+        data: { name, description, discount, imageUrl, active, eventId },
       })
     })
 

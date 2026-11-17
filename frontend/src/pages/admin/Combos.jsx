@@ -5,6 +5,7 @@ import { FiPlus, FiEdit2, FiTrash2, FiSearch, FiX, FiMenu, FiPackage } from 'rea
 import Modal from '../../components/Modal.jsx'
 import ConfirmModal from '../../components/ConfirmModal.jsx'
 import ImageUpload from '../../components/ImageUpload.jsx'
+import EventBadge from '../../components/EventBadge.jsx'
 
 function formatBRL(value) {
   const num = String(value).replace(/\D/g, '')
@@ -29,7 +30,9 @@ export default function AdminCombos() {
   const [addonSearch, setAddonSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
-  const [form, setForm] = useState({ name: '', description: '', discount: '', image: null })
+  const [form, setForm] = useState({ name: '', description: '', discount: '', image: null, eventId: '' })
+  const [events, setEvents] = useState([])
+  const [filterEvent, setFilterEvent] = useState('')
   const [selectedItems, setSelectedItems] = useState([])
   const [editingId, setEditingId] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -44,14 +47,16 @@ export default function AdminCombos() {
 
   async function loadData() {
     try {
-      const [comboRes, prodRes, addRes] = await Promise.all([
+      const [comboRes, prodRes, addRes, evRes] = await Promise.all([
         api.get('/combos'),
         api.get('/products'),
         api.get('/additionals'),
+        api.get('/catalog-events').catch(() => ({ data: [] })),
       ])
       setCombos(comboRes.data)
       setProducts(prodRes.data.filter((p) => p.active))
       setAdditionals(addRes.data)
+      setEvents(evRes.data)
     } catch {
       toast.error('Erro ao carregar dados')
     } finally {
@@ -61,7 +66,7 @@ export default function AdminCombos() {
 
   function openNew() {
     setEditingId(null)
-    setForm({ name: '', description: '', discount: '', image: null })
+    setForm({ name: '', description: '', discount: '', image: null, eventId: '' })
     setSelectedItems([])
     setSelectedAdditionals([])
     setAddonSearch('')
@@ -74,6 +79,7 @@ export default function AdminCombos() {
       description: combo.description || '',
       discount: toBRL(combo.discount),
       image: combo.imageUrl || null,
+      eventId: combo.eventId ? String(combo.eventId) : '',
     })
     setSelectedItems(combo.items.map((i) => ({ productId: i.productId, quantity: i.quantity })))
     setSelectedAdditionals(Array.isArray(combo.additionals) ? combo.additionals.map((a) => a.id) : [])
@@ -84,7 +90,7 @@ export default function AdminCombos() {
 
   function closeModal() {
     setEditingId(null)
-    setForm({ name: '', description: '', discount: '', image: null })
+    setForm({ name: '', description: '', discount: '', image: null, eventId: '' })
     setSelectedItems([])
     setSelectedAdditionals([])
     setAddonSearch('')
@@ -176,6 +182,7 @@ export default function AdminCombos() {
         imageUrl,
         items: selectedItems,
         additionalIds: selectedAdditionals,
+        eventId: form.eventId ? Number(form.eventId) : null,
       }
 
       if (editingId) {
@@ -187,8 +194,8 @@ export default function AdminCombos() {
       }
       closeModal()
       loadData()
-    } catch {
-      toast.error('Erro ao salvar combo')
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Erro ao salvar combo')
     } finally {
       setSaving(false)
     }
@@ -212,6 +219,18 @@ export default function AdminCombos() {
 
   const availableProducts = products.filter((p) => !selectedItems.find((i) => i.productId === p.id))
 
+  const comboEventId = form.eventId ? Number(form.eventId) : null
+  const mixedCatalogItems = selectedItems
+    .map((i) => getProduct(i.productId))
+    .filter((p) => p && p.eventId && p.eventId !== comboEventId)
+
+  const filteredCombos = combos.filter((c) => {
+    if (search.trim() && !(c.name || '').toLowerCase().includes(search.toLowerCase())) return false
+    if (filterEvent === 'none' && c.eventId) return false
+    if (filterEvent && filterEvent !== 'none' && c.eventId !== Number(filterEvent)) return false
+    return true
+  })
+
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
@@ -221,15 +240,28 @@ export default function AdminCombos() {
         </button>
       </div>
 
-      <div className="relative mb-6">
-        <FiSearch size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Pesquisar por nome do combo..."
-          className="w-full pl-11 pr-4 py-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-base md:text-sm text-gray-900 dark:text-white placeholder-gray-400"
-        />
+      <div className="flex flex-col md:flex-row gap-4 mb-6">
+        <div className="relative flex-1">
+          <FiSearch size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Pesquisar por nome do combo..."
+            className="w-full pl-11 pr-4 py-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-base md:text-sm text-gray-900 dark:text-white placeholder-gray-400"
+          />
+        </div>
+        {events.length > 0 && (
+          <select
+            value={filterEvent}
+            onChange={(e) => setFilterEvent(e.target.value)}
+            className="px-4 py-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-base md:text-sm text-gray-900 dark:text-white"
+          >
+            <option value="">Todos os catálogos</option>
+            <option value="none">Catálogo principal</option>
+            {events.map((ev) => <option key={ev.id} value={ev.id}>{ev.name}</option>)}
+          </select>
+        )}
       </div>
 
       <Modal isOpen={showModal} onClose={closeModal} title={editingId ? 'Editar Combo' : 'Novo Combo'} maxWidth="max-w-2xl" maxHeight="600px" footer={
@@ -247,6 +279,17 @@ export default function AdminCombos() {
             <label className={labelClass}>Nome do Combo</label>
             <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputClass} placeholder="Ex: Kit Festa Completo" required />
           </div>
+
+          {events.length > 0 && (
+            <div>
+              <label className={labelClass}>Catálogo</label>
+              <select value={form.eventId} onChange={(e) => setForm({ ...form, eventId: e.target.value })} className={inputClass}>
+                <option value="">Catálogo principal</option>
+                {events.map((ev) => <option key={ev.id} value={ev.id}>{ev.name}</option>)}
+              </select>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Combos de uma data comemorativa aparecem só no link desse catálogo</p>
+            </div>
+          )}
 
           <div>
             <label className={labelClass}>Imagem do Combo</label>
@@ -316,6 +359,11 @@ export default function AdminCombos() {
 
             {selectedItems.length < 2 && (
               <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">Adicione pelo menos 2 produtos ao combo</p>
+            )}
+            {mixedCatalogItems.length > 0 && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+                Atenção: {mixedCatalogItems.map((p) => p.name).join(', ')} {mixedCatalogItems.length > 1 ? 'são' : 'é'} de outro catálogo. O combo aparece no catálogo escolhido acima, mas confira se faz sentido misturar.
+              </p>
             )}
           </div>
 
@@ -460,6 +508,7 @@ export default function AdminCombos() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{p.name}</p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">{p.category?.name}</p>
+                      {p.event && <EventBadge name={p.event.name} />}
                     </div>
                     <span className="text-sm font-medium text-gray-900 dark:text-white shrink-0">R$ {toBRL(p.price)}</span>
                   </button>
@@ -484,10 +533,7 @@ export default function AdminCombos() {
 
       {/* Mobile: Cards */}
       <div className="md:hidden space-y-3">
-        {combos.filter((c) => {
-          if (search.trim() && !(c.name || '').toLowerCase().includes(search.toLowerCase())) return false
-          return true
-        }).map((c) => (
+        {filteredCombos.map((c) => (
           <div key={c.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4">
             <div className="flex items-start gap-3">
               {c.imageUrl ? (
@@ -497,7 +543,10 @@ export default function AdminCombos() {
               )}
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{c.name}</h3>
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{c.name}</h3>
+                    {c.event && <EventBadge name={c.event.name} />}
+                  </div>
                   <span className={`shrink-0 ml-2 px-2 py-0.5 text-xs rounded-full ${c.active ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'}`}>
                     {c.active ? 'Ativo' : 'Inativo'}
                   </span>
@@ -527,10 +576,7 @@ export default function AdminCombos() {
             </div>
           </div>
         ))}
-        {combos.filter((c) => {
-          if (search.trim() && !(c.name || '').toLowerCase().includes(search.toLowerCase())) return false
-          return true
-        }).length === 0 && (
+        {filteredCombos.length === 0 && (
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm px-6 py-8 text-center text-gray-400">Nenhum combo encontrado</div>
         )}
       </div>
@@ -551,10 +597,7 @@ export default function AdminCombos() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-            {combos.filter((c) => {
-              if (search.trim() && !(c.name || '').toLowerCase().includes(search.toLowerCase())) return false
-              return true
-            }).map((c) => (
+            {filteredCombos.map((c) => (
               <tr key={c.id}>
                 <td className="px-6 py-4">
                   {c.imageUrl ? (
@@ -563,7 +606,10 @@ export default function AdminCombos() {
                     <div className="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-gray-400 text-xs">Sem</div>
                   )}
                 </td>
-                <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">{c.name}</td>
+                <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">
+                  {c.name}
+                  {c.event && <div><EventBadge name={c.event.name} /></div>}
+                </td>
                 <td className="px-6 py-4">
                   <div className="flex flex-wrap gap-1">
                     {c.items.map((i) => (

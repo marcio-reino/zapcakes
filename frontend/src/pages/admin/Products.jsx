@@ -6,6 +6,7 @@ import Modal from '../../components/Modal.jsx'
 import ConfirmModal from '../../components/ConfirmModal.jsx'
 import ImageUpload from '../../components/ImageUpload.jsx'
 import AdditionalsModal from '../../components/AdditionalsModal.jsx'
+import EventBadge from '../../components/EventBadge.jsx'
 
 const BRL = (value) => Number(value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const fmtCode = (id) => String(id).padStart(5, '0')
@@ -46,13 +47,15 @@ export default function AdminProducts() {
   const [addonSearch, setAddonSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
-  const [form, setForm] = useState({ name: '', description: '', price: '', categoryId: '', image: null, minOrder: 1, maxOrder: 500, allowInspirationImages: false, inspirationInstruction: '', maxInspirationImages: 3, recipeId: '' })
+  const [form, setForm] = useState({ name: '', description: '', price: '', categoryId: '', image: null, minOrder: 1, maxOrder: 500, allowInspirationImages: false, inspirationInstruction: '', maxInspirationImages: 3, recipeId: '', eventId: '' })
   const [editingId, setEditingId] = useState(null)
   const [formTab, setFormTab] = useState('descricao')
   const [saving, setSaving] = useState(false)
   const [deleteId, setDeleteId] = useState(null)
   const [search, setSearch] = useState('')
   const [filterCategory, setFilterCategory] = useState('')
+  const [events, setEvents] = useState([])
+  const [filterEvent, setFilterEvent] = useState('')
 
   useEffect(() => {
     loadData()
@@ -60,16 +63,18 @@ export default function AdminProducts() {
 
   async function loadData() {
     try {
-      const [prodRes, catRes, recRes, addRes] = await Promise.all([
+      const [prodRes, catRes, recRes, addRes, evRes] = await Promise.all([
         api.get('/products'),
         api.get('/categories'),
         api.get('/recipes'),
         api.get('/additionals'),
+        api.get('/catalog-events').catch(() => ({ data: [] })),
       ])
       setProducts(prodRes.data)
       setCategories(catRes.data)
       setRecipes(recRes.data.filter((r) => r.active))
       setAdditionals(addRes.data)
+      setEvents(evRes.data)
     } catch {
       toast.error('Erro ao carregar dados')
     } finally {
@@ -93,7 +98,7 @@ export default function AdminProducts() {
 
   function openNew() {
     setEditingId(null)
-    setForm({ name: '', description: '', price: '', categoryId: '', image: null, minOrder: 1, maxOrder: 500, allowInspirationImages: false, inspirationInstruction: '', maxInspirationImages: 3, recipeId: '' })
+    setForm({ name: '', description: '', price: '', categoryId: '', image: null, minOrder: 1, maxOrder: 500, allowInspirationImages: false, inspirationInstruction: '', maxInspirationImages: 3, recipeId: '', eventId: '' })
     setSelectedAdditionals([])
     setFormTab('descricao')
     setShowModal(true)
@@ -112,6 +117,7 @@ export default function AdminProducts() {
       inspirationInstruction: product.inspirationInstruction || '',
       maxInspirationImages: product.maxInspirationImages || 3,
       recipeId: product.recipeId ? String(product.recipeId) : '',
+      eventId: product.eventId ? String(product.eventId) : '',
     })
     setSelectedAdditionals(Array.isArray(product.additionals) ? product.additionals.map((a) => a.id) : [])
     setEditingId(product.id)
@@ -120,7 +126,7 @@ export default function AdminProducts() {
 
   function closeModal() {
     setEditingId(null)
-    setForm({ name: '', description: '', price: '', categoryId: '', image: null, minOrder: 1, maxOrder: 500, allowInspirationImages: false, inspirationInstruction: '', maxInspirationImages: 3, recipeId: '' })
+    setForm({ name: '', description: '', price: '', categoryId: '', image: null, minOrder: 1, maxOrder: 500, allowInspirationImages: false, inspirationInstruction: '', maxInspirationImages: 3, recipeId: '', eventId: '' })
     setSelectedAdditionals([])
     setAddonSearch('')
     setFormTab('descricao')
@@ -163,6 +169,7 @@ export default function AdminProducts() {
         inspirationInstruction: form.inspirationInstruction || null,
         maxInspirationImages: Number(form.maxInspirationImages) || 3,
         recipeId: form.recipeId ? Number(form.recipeId) : null,
+        eventId: form.eventId ? Number(form.eventId) : null,
         additionalIds: selectedAdditionals,
       }
 
@@ -173,13 +180,14 @@ export default function AdminProducts() {
       } else {
         await api.post('/products', payload)
         toast.success('Produto criado!')
-        setForm({ name: '', description: '', price: '', categoryId: '', image: null, minOrder: 1, maxOrder: 500, allowInspirationImages: false, inspirationInstruction: '', maxInspirationImages: 3, recipeId: '' })
+        // Mantém o catálogo escolhido para facilitar cadastrar vários itens da mesma data
+        setForm({ name: '', description: '', price: '', categoryId: '', image: null, minOrder: 1, maxOrder: 500, allowInspirationImages: false, inspirationInstruction: '', maxInspirationImages: 3, recipeId: '', eventId: form.eventId })
         setSelectedAdditionals([])
         setFormTab('descricao')
       }
       loadData()
-    } catch {
-      toast.error('Erro ao salvar produto')
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Erro ao salvar produto')
     } finally {
       setSaving(false)
     }
@@ -240,6 +248,17 @@ export default function AdminProducts() {
           <option value="">Todas as categorias</option>
           {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
+        {events.length > 0 && (
+          <select
+            value={filterEvent}
+            onChange={(e) => setFilterEvent(e.target.value)}
+            className="px-4 py-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-base md:text-sm text-gray-900 dark:text-white"
+          >
+            <option value="">Todos os catálogos</option>
+            <option value="none">Catálogo principal</option>
+            {events.map((ev) => <option key={ev.id} value={ev.id}>{ev.name}</option>)}
+          </select>
+        )}
       </div>
 
       <Modal
@@ -295,6 +314,16 @@ export default function AdminProducts() {
                   {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
+              {events.length > 0 && (
+                <div>
+                  <label className={labelClass}>Catálogo</label>
+                  <select value={form.eventId} onChange={(e) => setForm({ ...form, eventId: e.target.value })} className={inputClass}>
+                    <option value="">Catálogo principal</option>
+                    {events.map((ev) => <option key={ev.id} value={ev.id}>{ev.name}</option>)}
+                  </select>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Produtos de uma data comemorativa aparecem só no link desse catálogo</p>
+                </div>
+              )}
               <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label className={labelClass}>Preço</label>
@@ -481,6 +510,8 @@ export default function AdminProducts() {
         {products.filter((p) => {
           if (search.trim() && !(p.name || '').toLowerCase().includes(search.toLowerCase())) return false
           if (filterCategory && p.categoryId !== Number(filterCategory)) return false
+          if (filterEvent === 'none' && p.eventId) return false
+          if (filterEvent && filterEvent !== 'none' && p.eventId !== Number(filterEvent)) return false
           return true
         }).map((p) => (
           <div key={p.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4">
@@ -496,6 +527,7 @@ export default function AdminProducts() {
                     <p className="text-xs text-gray-400 dark:text-gray-500">Cód. {fmtCode(p.id)}</p>
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{p.name}</h3>
                     <p className="text-base text-gray-500 dark:text-gray-400">{p.category?.name}</p>
+                    {p.event && <EventBadge name={p.event.name} />}
                   </div>
                   <span className={`shrink-0 ml-2 px-2 py-0.5 text-xs rounded-full ${p.active ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'}`}>
                     {p.active ? 'Ativo' : 'Inativo'}
@@ -517,6 +549,8 @@ export default function AdminProducts() {
         {products.filter((p) => {
           if (search.trim() && !(p.name || '').toLowerCase().includes(search.toLowerCase())) return false
           if (filterCategory && p.categoryId !== Number(filterCategory)) return false
+          if (filterEvent === 'none' && p.eventId) return false
+          if (filterEvent && filterEvent !== 'none' && p.eventId !== Number(filterEvent)) return false
           return true
         }).length === 0 && (
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm px-6 py-8 text-center text-gray-400">Nenhum produto encontrado</div>
@@ -542,6 +576,8 @@ export default function AdminProducts() {
             {products.filter((p) => {
               if (search.trim() && !(p.name || '').toLowerCase().includes(search.toLowerCase())) return false
               if (filterCategory && p.categoryId !== Number(filterCategory)) return false
+              if (filterEvent === 'none' && p.eventId) return false
+              if (filterEvent && filterEvent !== 'none' && p.eventId !== Number(filterEvent)) return false
               return true
             }).map((p) => (
               <tr key={p.id}>
@@ -553,7 +589,10 @@ export default function AdminProducts() {
                     <div className="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-gray-400 text-xs">Sem</div>
                   )}
                 </td>
-                <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">{p.name}</td>
+                <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">
+                  {p.name}
+                  {p.event && <div><EventBadge name={p.event.name} /></div>}
+                </td>
                 <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{p.category?.name}</td>
                 <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">{Number(p.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                 <td className="px-6 py-4 text-sm text-right font-medium">
