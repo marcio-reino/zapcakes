@@ -26,7 +26,7 @@ export class CompanyController {
             id: true, companyName: true, legalName: true,
             document: true, documentType: true,
             logoUrl: true, responsible: true, hourlyRate: true, useReservation: true, reservationPercent: true,
-            status: true, trialEndsAt: true, planStartedAt: true, planExpiresAt: true,
+            status: true, trialEndsAt: true, planStartedAt: true, planExpiresAt: true, billingDay: true,
             plan: {
               select: {
                 id: true, title: true, description: true, price: true, features: true,
@@ -70,6 +70,7 @@ export class CompanyController {
       trialEndsAt: user.account?.trialEndsAt || null,
       planStartedAt: user.account?.planStartedAt || null,
       planExpiresAt: user.account?.planExpiresAt || null,
+      billingDay: user.account?.billingDay || null,
     }
   }
 

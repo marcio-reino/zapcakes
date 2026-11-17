@@ -8,6 +8,28 @@ import Modal from '../../components/Modal.jsx'
 import toast from 'react-hot-toast'
 import faviconImg from '../../assets/favicon.png'
 
+// Cobrança pendente manda; sem ela, calcula a próxima ocorrência do dia de vencimento
+function nextDueDate(billingDay, pendingDueDate) {
+  const now = new Date()
+  const todayYmd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+
+  if (pendingDueDate) {
+    const ymd = String(pendingDueDate).slice(0, 10)
+    const [y, m, d] = ymd.split('-')
+    return { label: `${d}/${m}/${y}`, overdue: ymd < todayYmd }
+  }
+
+  let year = now.getFullYear()
+  let month = now.getMonth()
+  const clamp = (y, mo) => Math.min(billingDay, new Date(y, mo + 1, 0).getDate())
+  if (now.getDate() > clamp(year, month)) {
+    month += 1
+    if (month > 11) { month = 0; year += 1 }
+  }
+  const day = clamp(year, month)
+  return { label: `${String(day).padStart(2, '0')}/${String(month + 1).padStart(2, '0')}/${year}`, overdue: false }
+}
+
 export default function ClientDashboard() {
   const { user } = useAuth()
   const [stats, setStats] = useState({
@@ -47,6 +69,7 @@ export default function ClientDashboard() {
         trialEndsAt: data.trialEndsAt,
         planStartedAt: data.planStartedAt,
         planExpiresAt: data.planExpiresAt,
+        billingDay: data.billingDay,
       })
       if (data.companyName) setCompanyName(data.companyName)
     }).catch(() => {})
@@ -247,6 +270,15 @@ export default function ClientDashboard() {
                         {parseFloat(planInfo.plan.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}/mês
                       </p>
                     )}
+                    {planInfo.billingDay && planInfo.status !== 'TRIAL' && (() => {
+                      const due = nextDueDate(planInfo.billingDay, pendingPayment?.payment?.dueDate)
+                      return (
+                        <p className={`text-sm md:text-xs mt-0.5 flex items-center gap-1 ${due.overdue ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-gray-500 dark:text-gray-400'}`}>
+                          <FiCalendar size={12} className="shrink-0" />
+                          Vence todo dia {planInfo.billingDay} · {due.overdue ? 'vencido em' : 'próximo em'} {due.label}
+                        </p>
+                      )
+                    })()}
                   </div>
 
                   {/* Status inline ao lado do nome */}
