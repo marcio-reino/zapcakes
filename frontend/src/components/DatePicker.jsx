@@ -25,7 +25,7 @@ function parseDate(str) {
   return { year: y, month: m - 1, day: d }
 }
 
-export default function DatePicker({ value, onChange, placeholder = 'Selecionar data' }) {
+export default function DatePicker({ value, onChange, placeholder = 'Selecionar data', className = '' }) {
   const [open, setOpen] = useState(false)
   const parsed = parseDate(value)
   const today = new Date()
@@ -102,7 +102,7 @@ export default function DatePicker({ value, onChange, placeholder = 'Selecionar 
             ? 'border-pink-500 ring-2 ring-pink-500/20'
             : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'
           }
-          bg-white dark:bg-gray-800 text-gray-800 dark:text-white outline-none min-w-[160px]`}
+          bg-white dark:bg-gray-800 text-gray-800 dark:text-white outline-none min-w-[160px] ${className}`}
       >
         <FiCalendar size={16} className={value ? 'text-pink-500' : 'text-gray-400'} />
         <span className={value ? 'text-sm' : 'text-sm text-gray-400'}>

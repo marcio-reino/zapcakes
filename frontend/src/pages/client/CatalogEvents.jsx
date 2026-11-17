@@ -6,6 +6,7 @@ import { FiPlus, FiEdit2, FiTrash2, FiCopy, FiExternalLink, FiCalendar } from 'r
 import Modal from '../../components/Modal.jsx'
 import ConfirmModal from '../../components/ConfirmModal.jsx'
 import ImageUpload from '../../components/ImageUpload.jsx'
+import DatePicker from '../../components/DatePicker.jsx'
 
 const BANNER_ASPECTS = [{ label: '3:1', value: 3, w: 1200, h: 400 }]
 
@@ -246,21 +247,33 @@ export default function CatalogEvents() {
           <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1">
               <label className={labelClass}>Início (opcional)</label>
-              <input type="date" value={form.startsAt} onChange={(e) => setForm({ ...form, startsAt: e.target.value })} className={inputClass} />
+              <DatePicker value={form.startsAt} onChange={(v) => setForm({ ...form, startsAt: v })} placeholder="Data de início" className="w-full" />
             </div>
             <div className="flex-1">
               <label className={labelClass}>Fim (opcional)</label>
-              <input type="date" value={form.endsAt} onChange={(e) => setForm({ ...form, endsAt: e.target.value })} className={inputClass} />
+              <DatePicker value={form.endsAt} onChange={(v) => setForm({ ...form, endsAt: v })} placeholder="Data de fim" className="w-full" />
             </div>
           </div>
           <p className="text-sm md:text-xs text-gray-500 dark:text-gray-400 -mt-2">
             Fora do período o link mostra "catálogo encerrado" e os itens não podem ser pedidos.
           </p>
 
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} className="w-5 h-5 text-green-600 rounded" />
-            <span className="text-base lg:text-sm text-gray-700 dark:text-gray-300">Catálogo ativo</span>
-          </label>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-base lg:text-sm font-medium text-gray-700 dark:text-gray-300">Catálogo ativo</p>
+              <p className="text-sm md:text-xs text-gray-500 dark:text-gray-400 mt-0.5">Desative para tirar o catálogo do ar sem apagar</p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={form.active}
+              aria-label="Catálogo ativo"
+              onClick={() => setForm({ ...form, active: !form.active })}
+              className={`relative w-11 h-6 shrink-0 rounded-full cursor-pointer transition-colors ${form.active ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+            >
+              <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${form.active ? 'translate-x-5' : ''}`} />
+            </button>
+          </div>
         </form>
       </Modal>
 
