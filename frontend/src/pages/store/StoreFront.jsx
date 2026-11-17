@@ -277,7 +277,7 @@ function EventBanners({ events, slug }) {
           to={`/loja/${slug}/${ev.slug}`}
           className="block bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100 hover:shadow-md transition-shadow"
         >
-          {ev.bannerUrl && <img src={ev.bannerUrl} alt={ev.name} className="w-full aspect-[3/1] object-cover" />}
+          {ev.bannerUrl && <img src={ev.bannerUrl} alt={ev.name} className="w-full aspect-[3/2] object-cover" />}
           <div className="flex items-center justify-between gap-3 px-4 py-3">
             <div className="min-w-0">
               <p className="font-bold text-gray-800">🎉 {ev.name}</p>
@@ -387,7 +387,7 @@ export default function StoreFront() {
             <FiArrowLeft size={16} /> Catálogo completo da loja
           </Link>
           {event.bannerUrl && (
-            <img src={event.bannerUrl} alt={event.name} className="w-full aspect-[3/1] object-cover rounded-xl shadow-sm mb-3" />
+            <img src={event.bannerUrl} alt={event.name} className="w-full aspect-[3/2] object-cover rounded-xl shadow-sm mb-3" />
           )}
           <h1 className="text-xl font-bold text-gray-800">{event.name}</h1>
           {event.endsAt && <p className="text-sm text-gray-500 mt-1">Encomendas até {fmtDate(event.endsAt)}</p>}

@@ -8,7 +8,7 @@ import ConfirmModal from '../../components/ConfirmModal.jsx'
 import ImageUpload from '../../components/ImageUpload.jsx'
 import DatePicker from '../../components/DatePicker.jsx'
 
-const BANNER_ASPECTS = [{ label: '3:1', value: 3, w: 1200, h: 400 }]
+const BANNER_ASPECTS = [{ label: '3:2', value: 3 / 2, w: 600, h: 400 }]
 
 const emptyForm = { name: '', slug: '', description: '', banner: null, startsAt: '', endsAt: '', active: true }
 
@@ -290,7 +290,7 @@ export default function CatalogEvents() {
       <div className="md:hidden space-y-3">
         {events.map((ev) => (
           <div key={ev.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
-            {ev.bannerUrl && <img src={ev.bannerUrl} alt={ev.name} className="w-full aspect-[3/1] object-cover" />}
+            {ev.bannerUrl && <img src={ev.bannerUrl} alt={ev.name} className="w-full aspect-[3/2] object-cover" />}
             <div className="p-4">
               <div className="flex items-start justify-between gap-2">
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{ev.name}</h3>
@@ -336,9 +336,9 @@ export default function CatalogEvents() {
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-3">
                     {ev.bannerUrl ? (
-                      <img src={ev.bannerUrl} alt={ev.name} className="w-24 h-8 rounded object-cover" />
+                      <img src={ev.bannerUrl} alt={ev.name} className="w-[60px] h-10 rounded object-cover shrink-0" />
                     ) : (
-                      <div className="w-24 h-8 rounded bg-gray-100 dark:bg-gray-700" />
+                      <div className="w-[60px] h-10 rounded bg-gray-100 dark:bg-gray-700 shrink-0" />
                     )}
                     <div>
                       <p className="text-sm font-medium text-gray-900 dark:text-white">{ev.name}</p>
