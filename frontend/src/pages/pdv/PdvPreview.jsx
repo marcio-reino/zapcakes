@@ -149,8 +149,26 @@ export default function PdvPreview() {
   const suggestions = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (q.length < 2 || /^\d+$/.test(q) || /^\d+\s*[*xX]/.test(q)) return []
-    return PRODUCTS.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 6)
+    return PRODUCTS.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 8)
   }, [query])
+
+  // Item marcado na lista de sugestões (setas ↑ ↓ + Enter)
+  const [activeIdx, setActiveIdx] = useState(0)
+  useEffect(() => { setActiveIdx(0) }, [query])
+
+  function handleScanKeyDown(e) {
+    if (suggestions.length === 0) return
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setActiveIdx((i) => (i + 1) % suggestions.length)
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActiveIdx((i) => (i - 1 + suggestions.length) % suggestions.length)
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      pickProduct(suggestions[activeIdx] || suggestions[0])
+    }
+  }
 
   const gridProducts = category === 'Todos' ? PRODUCTS : PRODUCTS.filter((p) => p.category === category)
 
@@ -217,13 +235,33 @@ export default function PdvPreview() {
                     autoFocus
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
+                    onKeyDown={handleScanKeyDown}
+                    role="combobox"
+                    aria-expanded={suggestions.length > 0}
+                    aria-controls="pdv-suggestions"
+                    aria-activedescendant={suggestions.length ? `pdv-sug-${suggestions[activeIdx]?.id}` : undefined}
                     placeholder="Bipe o código de barras ou digite o nome do produto"
                     className="w-full pl-14 pr-4 py-4 rounded-xl border-2 border-green-600 bg-white dark:bg-gray-800 text-lg shadow-sm focus:outline-none focus:ring-4 focus:ring-green-600/20"
                   />
                   {suggestions.length > 0 && (
-                    <div className="absolute z-20 left-0 right-0 top-full mt-1 rounded-xl bg-white dark:bg-gray-800 shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-                      {suggestions.map((p) => (
-                        <button key={p.id} type="button" onClick={() => pickProduct(p)} className="w-full flex items-center justify-between px-5 py-3 text-left hover:bg-green-50 dark:hover:bg-gray-700">
+                    <div id="pdv-suggestions" role="listbox" className="absolute z-20 left-0 right-0 top-full mt-1 rounded-xl bg-white dark:bg-gray-800 shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                      {suggestions.map((p, idx) => (
+                        <button
+                          key={p.id}
+                          id={`pdv-sug-${p.id}`}
+                          type="button"
+                          role="option"
+                          aria-selected={idx === activeIdx}
+                          tabIndex={-1}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onMouseEnter={() => setActiveIdx(idx)}
+                          onClick={() => pickProduct(p)}
+                          className={`w-full flex items-center justify-between px-5 py-3 text-left border-l-4 ${
+                            idx === activeIdx
+                              ? 'bg-green-50 dark:bg-gray-700 border-green-600'
+                              : 'border-transparent'
+                          }`}
+                        >
                           <span className="flex items-center gap-2">
                             <FiSearch className="text-gray-400" size={14} />
                             {p.name}
@@ -246,7 +284,7 @@ export default function PdvPreview() {
                 </button>
               </form>
               <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                Dica: <b>3*código</b> lança 3 unidades. A etiqueta da balança é reconhecida sozinha.
+                Dica: <b>3*código</b> lança 3 unidades. Na busca por nome, use <b>↑ ↓</b> para escolher e <b>Enter</b> para lançar. A etiqueta da balança é reconhecida sozinha.
               </p>
             </div>
 
