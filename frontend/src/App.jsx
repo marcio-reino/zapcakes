@@ -49,6 +49,7 @@ import StorePrivacidade from './pages/store/StorePrivacidade.jsx'
 // Client store settings
 import StoreSite from './pages/client/StoreSite.jsx'
 import CatalogEvents from './pages/client/CatalogEvents.jsx'
+import PdvPreview from './pages/pdv/PdvPreview.jsx'
 
 // Superadmin pages
 import SuperadminDashboard from './pages/superadmin/Dashboard.jsx'
@@ -88,6 +89,8 @@ export default function App() {
     <Routes>
       <Route path="/login" element={user ? <Navigate to={getHomeRoute(user.role)} /> : <LoginPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
+      {/* Protótipo de layout do PDV (dados de exemplo, sem login) */}
+      <Route path="/pdv" element={<PdvPreview />} />
       <Route path="/register" element={<Navigate to="/login" />} />
 
       {/* Admin Routes */}

@@ -55,3 +55,13 @@ body {
   scrollbar-width: thin;
   scrollbar-color: rgba(156, 163, 175, 0.4) transparent;
 }
+
+/* PDV: linha de leitura da câmera */
+@keyframes pdvScan {
+  0%, 100% { top: 12%; }
+  50% { top: 88%; }
+}
+
+.pdv-scan-line {
+  animation: pdvScan 2s ease-in-out infinite;
+}
