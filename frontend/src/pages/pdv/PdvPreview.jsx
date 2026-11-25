@@ -258,7 +258,7 @@ export default function PdvPreview() {
                           onClick={() => pickProduct(p)}
                           className={`w-full flex items-center justify-between px-5 py-3 text-left border-l-4 ${
                             idx === activeIdx
-                              ? 'bg-green-50 dark:bg-gray-700 border-green-600'
+                              ? 'bg-green-100 dark:bg-green-900/50 border-green-600'
                               : 'border-transparent'
                           }`}
                         >
@@ -523,7 +523,7 @@ function CartTable({ cart, lastKey, onQty, onRemove, onWeight }) {
         </thead>
         <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
           {cart.map((item, idx) => (
-            <tr key={item.key} className={item.key === lastKey ? 'bg-green-50 dark:bg-green-900/20' : ''}>
+            <tr key={item.key} className={item.key === lastKey ? 'bg-green-100 dark:bg-green-900/40' : ''}>
               <td className="px-5 py-3 text-gray-400 tabular-nums">{String(idx + 1).padStart(2, '0')}</td>
               <td className="px-4 py-3">
                 <p className="font-medium text-base">{item.name}</p>
