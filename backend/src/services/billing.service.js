@@ -24,10 +24,14 @@ export function currentYear(now = new Date()) {
   return Number(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric' }).format(now))
 }
 
+// Primeiro mês com cobrança de mensalidade no sistema (antes disso nenhuma conta paga)
+export const BILLING_START_MONTH = '2026-11'
+
 // Mês que o cliente pode pagar pelo painel: só do ano corrente e a partir do mês em que o plano começou
 export function validateBillingMonth(referenceMonth, { planStartedAt, now = new Date() } = {}) {
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(referenceMonth || '')) return 'Mês inválido'
   if (Number(referenceMonth.slice(0, 4)) !== currentYear(now)) return 'Só é possível pagar meses do ano corrente'
+  if (referenceMonth < BILLING_START_MONTH) return 'Este mês não tem cobrança'
   if (planStartedAt) {
     const start = new Date(planStartedAt).toISOString().slice(0, 7)
     if (referenceMonth < start) return 'Este mês é anterior ao início do plano'

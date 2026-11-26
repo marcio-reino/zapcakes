@@ -16,6 +16,10 @@ function dueYmdFor(ym, billingDay) {
   return `${ym}-${pad(day)}`
 }
 
+// Primeiro mês com cobrança de mensalidade (igual ao BILLING_START_MONTH do backend).
+// Em 2026 só novembro e dezembro são cobrados; de 2027 em diante, todos os meses.
+export const BILLING_START_YM = '2026-11'
+
 // Quando um mês tem mais de uma cobrança, a paga ou a em aberto vale mais que a cancelada
 const PRIORITY = { PAID: 0, PENDING: 1, FAILED: 2, REFUNDED: 3, CANCELLED: 4 }
 
@@ -33,7 +37,8 @@ export function buildYearMonths({ year, payments, billingDay, planPrice, planSta
     const dueYmd = payment?.dueDate ? String(payment.dueDate).slice(0, 10) : dueYmdFor(ym, billingDay)
 
     let state
-    if (payment?.status === 'PAID') state = 'PAID'
+    if (ym < BILLING_START_YM) state = 'BEFORE_PLAN'
+    else if (payment?.status === 'PAID') state = 'PAID'
     else if (payment && ['CANCELLED', 'REFUNDED'].includes(payment.status)) state = 'CANCELLED'
     else if (!payment && startYm && ym < startYm) state = 'BEFORE_PLAN'
     else if (payment?.proofUrl) state = 'REVIEW'
@@ -76,11 +81,13 @@ export function PlanMonthsGrid({ months, onSelect }) {
               <span className="text-base md:text-sm font-bold text-gray-900 dark:text-white">{MONTH_NAMES[Number(m.ym.slice(5, 7)) - 1]}</span>
               {m.current && <span className="text-[10px] font-semibold uppercase tracking-wide text-green-700 dark:text-green-400">Atual</span>}
             </div>
-            <p className="text-lg md:text-base font-extrabold text-gray-900 dark:text-white mt-1">{BRL(m.amount)}</p>
+            <p className="text-lg md:text-base font-extrabold text-gray-900 dark:text-white mt-1">{m.state === 'BEFORE_PLAN' ? '—' : BRL(m.amount)}</p>
             <p className="text-sm md:text-xs text-gray-500 dark:text-gray-400">
-              {m.state === 'PAID' && m.payment?.paidAt
-                ? `Pago em ${new Date(m.payment.paidAt).toLocaleDateString('pt-BR')}`
-                : `Vence ${ymdToBr(m.dueYmd)}`}
+              {m.state === 'BEFORE_PLAN'
+                ? 'Nada a pagar'
+                : m.state === 'PAID' && m.payment?.paidAt
+                  ? `Pago em ${new Date(m.payment.paidAt).toLocaleDateString('pt-BR')}`
+                  : `Vence ${ymdToBr(m.dueYmd)}`}
             </p>
             <span className={`mt-2 self-start inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${s.badge}`}>
               <s.Icon size={12} /> {s.label}
@@ -93,7 +100,7 @@ export function PlanMonthsGrid({ months, onSelect }) {
             {content}
           </button>
         ) : (
-          <div key={m.ym} className={base} title={m.state === 'BEFORE_PLAN' ? 'Mês anterior ao início do plano' : undefined}>
+          <div key={m.ym} className={base} title={m.state === 'BEFORE_PLAN' ? 'Sem cobrança neste mês' : undefined}>
             {content}
           </div>
         )
