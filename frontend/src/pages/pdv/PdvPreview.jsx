@@ -417,11 +417,11 @@ export default function PdvPreview() {
         <CameraOverlay
           onClose={closeModal}
           onDetect={(code) => {
-            // O código vai para o campo, como se tivesse sido digitado; o Enter lança o produto
+            // Pesquisa o produto na hora, como o leitor USB. Se não achar, o código fica no campo para conferir.
             setQuery(code)
             closeModal()
+            handleCode(code)
             setTimeout(() => scanRef.current?.select(), 0)
-            toast.success('Código lido. Confira e tecle Enter para lançar.')
           }}
         />
       )}
