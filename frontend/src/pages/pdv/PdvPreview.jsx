@@ -177,7 +177,7 @@ export default function PdvPreview() {
     <div className="h-screen min-w-[1024px] flex flex-col bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 overflow-hidden">
       {/* Aviso do protótipo */}
       <div className="shrink-0 bg-amber-100 dark:bg-amber-900/40 text-amber-900 dark:text-amber-200 text-xs px-4 py-1.5 text-center">
-        Protótipo de layout (versão PC) · dados de exemplo · teste os códigos <b>7890000000017</b>, <b>3*2900000000021</b> e a etiqueta da balança <b>2000001008508</b>
+        Protótipo de layout (versão PC) · dados de exemplo · teste os códigos <b>7890000000017</b>, <b>3*2900000000025</b> e a etiqueta da balança <b>2000001008508</b>
       </div>
 
       {/* Cabeçalho */}

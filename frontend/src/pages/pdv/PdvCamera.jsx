@@ -41,6 +41,8 @@ function cameraErrorMessage(err) {
     case 'NotFoundError':
     case 'OverconstrainedError':
       return 'Nenhuma câmera encontrada. Conecte uma webcam e tente de novo.'
+    case 'ReaderLoadError':
+      return 'Não foi possível carregar o leitor de código. Recarregue a página e tente de novo.'
     case 'NotReadableError':
       return 'A câmera está em uso por outro programa. Feche-o e tente de novo.'
     default:
@@ -50,9 +52,36 @@ function cameraErrorMessage(err) {
 
 const corner = 'absolute w-8 h-8 border-green-400'
 
+// Decodificador zxing-cpp em WebAssembly. O .wasm vai junto com o app (nada de CDN), então funciona offline.
+const READER_OPTIONS = {
+  formats: ['EAN13', 'EAN8', 'UPCA', 'UPCE', 'Code128', 'QRCode'],
+  tryHarder: true,
+  tryRotate: true,
+  tryInvert: false,
+  maxNumberOfSymbols: 1,
+}
+
+let readerPromise = null
+function loadReader() {
+  if (!readerPromise) {
+    readerPromise = Promise.all([import('zxing-wasm/reader'), import('zxing-wasm/reader/zxing_reader.wasm?url')])
+      .then(([mod, wasm]) => {
+        mod.prepareZXingModule({
+          overrides: { locateFile: (path, prefix) => (path.endsWith('.wasm') ? wasm.default : prefix + path) },
+        })
+        return mod.readBarcodes
+      })
+      .catch((err) => { readerPromise = null; throw err })
+  }
+  return readerPromise
+}
+
+// Códigos curtos (EAN-8/UPC-E) erram mais com webcam: pedem uma confirmação a mais
+const confirmationsFor = (code) => (code.length >= 12 ? 2 : 3)
+
 export function CameraOverlay({ onClose, onDetect }) {
   const videoRef = useRef(null)
-  const controlsRef = useRef(null)
+  const trackRef = useRef(null)
   const doneRef = useRef(false)
   const onDetectRef = useRef(onDetect)
   onDetectRef.current = onDetect
@@ -74,45 +103,81 @@ export function CameraOverlay({ onClose, onDetect }) {
   useEffect(() => {
     let cancelled = false
     let timer
+    let stream
     setStatus('starting')
     setError('')
     setTorch(null)
 
+    // Confirmação: o mesmo código precisa sair igual em leituras seguidas.
+    // Evita os "números fantasmas" de uma leitura parcial (ex.: pedaço do EAN-13 lido como EAN-8).
+    let hit = { code: '', count: 0, at: 0 }
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+
+    function accept(code) {
+      doneRef.current = true
+      beep()
+      setDetected(code)
+      stream?.getTracks().forEach((t) => t.stop())
+      timer = setTimeout(() => onDetectRef.current(code), 450)
+    }
+
+    async function scanLoop(readBarcodes) {
+      if (cancelled || doneRef.current) return
+      const video = videoRef.current
+      if (video && video.readyState >= 2 && video.videoWidth) {
+        const scale = Math.min(1, 1280 / video.videoWidth)
+        canvas.width = Math.round(video.videoWidth * scale)
+        canvas.height = Math.round(video.videoHeight * scale)
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+        try {
+          const results = await readBarcodes(ctx.getImageData(0, 0, canvas.width, canvas.height), READER_OPTIONS)
+          const found = results.find((r) => r.isValid && r.text)
+          if (found && !cancelled && !doneRef.current) {
+            const code = found.text.trim()
+            const now = Date.now()
+            hit = code === hit.code && now - hit.at < 1500 ? { code, count: hit.count + 1, at: now } : { code, count: 1, at: now }
+            if (hit.count >= confirmationsFor(code)) return accept(code)
+          }
+        } catch { /* quadro ruim: tenta o próximo */ }
+      }
+      timer = setTimeout(() => scanLoop(readBarcodes), 60)
+    }
+
     async function start() {
       try {
-        const [{ BrowserMultiFormatReader }, { BarcodeFormat, DecodeHintType }] = await Promise.all([
-          import('@zxing/browser'),
-          import('@zxing/library'),
-        ])
+        if (!navigator.mediaDevices?.getUserMedia) throw new Error('sem câmera')
+        const size = { width: { ideal: 1920 }, height: { ideal: 1080 } }
+        const video = deviceId ? { deviceId: { exact: deviceId }, ...size } : { facingMode: { ideal: 'environment' }, ...size }
+        const reader = loadReader()
+        reader.catch(() => {}) // o erro é tratado no await abaixo
+        stream = await navigator.mediaDevices.getUserMedia({ video, audio: false })
+        if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return }
+        let readBarcodes
+        try {
+          readBarcodes = await reader
+        } catch {
+          stream.getTracks().forEach((t) => t.stop())
+          throw Object.assign(new Error('leitor'), { name: 'ReaderLoadError' })
+        }
         if (cancelled) return
 
-        const hints = new Map()
-        hints.set(DecodeHintType.POSSIBLE_FORMATS, [
-          BarcodeFormat.EAN_13, BarcodeFormat.EAN_8, BarcodeFormat.UPC_A, BarcodeFormat.UPC_E,
-          BarcodeFormat.CODE_128, BarcodeFormat.CODE_39, BarcodeFormat.ITF, BarcodeFormat.QR_CODE,
-        ])
-        hints.set(DecodeHintType.TRY_HARDER, true)
-        const reader = new BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: 120 })
+        const track = stream.getVideoTracks()[0]
+        trackRef.current = track
+        const caps = track?.getCapabilities?.() || {}
+        // Foco automático contínuo quando a câmera permite (webcams com autofoco e celulares)
+        if (caps.focusMode?.includes('continuous')) track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {})
+        if (caps.torch) setTorch(false)
 
-        const size = { width: { ideal: 1280 }, height: { ideal: 720 } }
-        const video = deviceId ? { deviceId: { exact: deviceId }, ...size } : { facingMode: { ideal: 'environment' }, ...size }
-
-        const controls = await reader.decodeFromConstraints({ video, audio: false }, videoRef.current, (result) => {
-          if (!result || doneRef.current || cancelled) return
-          doneRef.current = true
-          const code = result.getText().trim()
-          beep()
-          setDetected(code)
-          controlsRef.current?.stop()
-          timer = setTimeout(() => onDetectRef.current(code), 450)
-        })
-        if (cancelled) { controls.stop(); return }
-        controlsRef.current = controls
+        const el = videoRef.current
+        el.srcObject = stream
+        await el.play().catch(() => {})
+        if (cancelled) return
         setStatus('scanning')
-        if (controls.switchTorch) setTorch(false)
+        scanLoop(readBarcodes)
 
         // Os nomes das câmeras só aparecem depois da permissão
-        const list = await BrowserMultiFormatReader.listVideoInputDevices()
+        const list = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput')
         if (!cancelled) setDevices(list)
       } catch (err) {
         if (cancelled) return
@@ -131,8 +196,8 @@ export function CameraOverlay({ onClose, onDetect }) {
     return () => {
       cancelled = true
       clearTimeout(timer)
-      controlsRef.current?.stop()
-      controlsRef.current = null
+      stream?.getTracks().forEach((t) => t.stop())
+      trackRef.current = null
     }
   }, [deviceId, retry])
 
@@ -143,7 +208,7 @@ export function CameraOverlay({ onClose, onDetect }) {
 
   async function toggleTorch() {
     try {
-      await controlsRef.current?.switchTorch?.(!torch)
+      await trackRef.current?.applyConstraints({ advanced: [{ torch: !torch }] })
       setTorch(!torch)
     } catch { setTorch(null) }
   }
