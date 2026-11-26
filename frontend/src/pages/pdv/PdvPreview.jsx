@@ -9,7 +9,8 @@ import { LuScanBarcode, LuScale } from 'react-icons/lu'
 import { useTheme } from '../../contexts/ThemeContext.jsx'
 import logo from '../../assets/logo.svg'
 import { PRODUCTS, CATEGORIES, CATEGORY_COLORS, PAYMENT_METHODS, brl, kg, round2, parseScaleLabel } from './pdvMock.js'
-import { PaymentModal, WeightModal, CashMoveModal, CameraOverlay, METHOD_ICONS } from './PdvModals.jsx'
+import { PaymentModal, WeightModal, CashMoveModal, METHOD_ICONS } from './PdvModals.jsx'
+import { CameraOverlay } from './PdvCamera.jsx'
 import { OpenCashScreen, CloseCashScreen } from './PdvCashScreens.jsx'
 
 // Protótipo de layout do PDV, versão PC (dados de exemplo, sem backend).
@@ -415,7 +416,13 @@ export default function PdvPreview() {
       {modal?.type === 'camera' && (
         <CameraOverlay
           onClose={closeModal}
-          onDetect={(code) => { closeModal(); handleCode(code); toast.success('Código lido pela câmera') }}
+          onDetect={(code) => {
+            // O código vai para o campo, como se tivesse sido digitado; o Enter lança o produto
+            setQuery(code)
+            closeModal()
+            setTimeout(() => scanRef.current?.select(), 0)
+            toast.success('Código lido. Confira e tecle Enter para lançar.')
+          }}
         />
       )}
     </div>

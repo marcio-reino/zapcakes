@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { FiX, FiCheckCircle, FiDelete, FiTrash2, FiZap, FiArrowDownCircle, FiArrowUpCircle, FiCloudOff, FiCloud } from 'react-icons/fi'
+import { FiX, FiCheckCircle, FiDelete, FiTrash2, FiArrowDownCircle, FiArrowUpCircle, FiCloudOff, FiCloud } from 'react-icons/fi'
 import { LuBanknote, LuCreditCard, LuWallet, LuScale } from 'react-icons/lu'
 import { MdPix } from 'react-icons/md'
 import { PAYMENT_METHODS, brl, kg, round2 } from './pdvMock.js'
@@ -411,41 +411,5 @@ export function CashMoveModal({ initialType = 'SANGRIA', onClose, onConfirm }) {
         </div>
       </div>
     </PdvModal>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Leitura pela câmera (no protótipo a leitura é simulada)
-// ---------------------------------------------------------------------------
-export function CameraOverlay({ onClose, onDetect }) {
-  useEffect(() => {
-    const t = setTimeout(() => onDetect('7890000000017'), 2200)
-    function onKey(e) { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => { clearTimeout(t); window.removeEventListener('keydown', onKey) }
-  }, [onClose, onDetect])
-
-  return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col animate-fadeIn">
-      <div className="flex items-center justify-between px-4 py-4 text-white">
-        <span className="font-semibold">Ler código de barras</span>
-        <button onClick={onClose} className="p-2 rounded-full bg-white/10" aria-label="Fechar câmera"><FiX size={22} /></button>
-      </div>
-      <div className="flex-1 relative flex items-center justify-center bg-gradient-to-b from-gray-800 to-gray-900">
-        <div className="relative w-72 h-44 md:w-96 md:h-56">
-          <span className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-green-400 rounded-tl-xl" />
-          <span className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-green-400 rounded-tr-xl" />
-          <span className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-green-400 rounded-bl-xl" />
-          <span className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-green-400 rounded-br-xl" />
-          <span className="pdv-scan-line absolute left-3 right-3 h-0.5 bg-red-500 shadow-[0_0_12px_2px_rgba(239,68,68,0.7)]" />
-        </div>
-      </div>
-      <div className="px-4 py-6 text-center text-white space-y-4">
-        <p className="text-gray-300">Aponte a câmera para o código de barras ou para a etiqueta da balança</p>
-        <button className="inline-flex items-center gap-2 px-5 py-3 rounded-full bg-white/10 text-white">
-          <FiZap /> Lanterna
-        </button>
-      </div>
-    </div>
   )
 }
