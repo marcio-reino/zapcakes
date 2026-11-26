@@ -13,6 +13,7 @@ export async function companyRoutes(app) {
   app.get('/payments', controller.payments)
   app.get('/pending-payment', controller.pendingPayment)
   app.put('/payments/:id/proof', controller.attachProof)
+  app.put('/payments/month/:referenceMonth/proof', controller.attachProofByMonth)
   app.get('/delivery-zones', controller.listDeliveryZones)
   app.post('/delivery-zones', controller.createDeliveryZone)
   app.put('/delivery-zones/:id', controller.updateDeliveryZone)

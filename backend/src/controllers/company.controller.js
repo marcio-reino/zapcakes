@@ -1,4 +1,5 @@
 import prisma from '../config/database.js'
+import { generateUniquePaymentCode, dueDateFor, validateBillingMonth } from '../services/billing.service.js'
 
 export class CompanyController {
   // GET /api/company/system-phone — retorna telefone do WhatsApp do sistema
@@ -162,6 +163,52 @@ export class CompanyController {
     })
 
     return updated
+  }
+
+  // PUT /api/company/payments/month/:referenceMonth/proof — comprovante de um mês do ano corrente.
+  // Se o mês ainda não tem cobrança (ex: pagamento antecipado), cria a cobrança com o valor do plano.
+  async attachProofByMonth(request, reply) {
+    const { referenceMonth } = request.params
+    const { proofUrl } = request.body || {}
+    if (!proofUrl) return reply.status(400).send({ error: 'Envie o comprovante' })
+
+    const account = await prisma.account.findUnique({
+      where: { userId: request.user.id },
+      select: { id: true, billingDay: true, planStartedAt: true, plan: { select: { price: true } } },
+    })
+    if (!account) return reply.status(404).send({ error: 'Conta não encontrada' })
+    if (!account.plan || !account.billingDay) {
+      return reply.status(400).send({ error: 'Sua conta ainda não tem plano e dia de vencimento definidos' })
+    }
+
+    const invalid = validateBillingMonth(referenceMonth, { planStartedAt: account.planStartedAt })
+    if (invalid) return reply.status(400).send({ error: invalid })
+
+    const existing = await prisma.payment.findFirst({
+      where: { accountId: account.id, referenceMonth },
+      orderBy: { createdAt: 'desc' },
+    })
+
+    if (existing) {
+      if (existing.status !== 'PENDING') {
+        return reply.status(409).send({ error: existing.status === 'PAID' ? 'Este mês já está pago' : 'Esta cobrança não está em aberto' })
+      }
+      return prisma.payment.update({ where: { id: existing.id }, data: { proofUrl } })
+    }
+
+    const code = await generateUniquePaymentCode()
+    return prisma.payment.create({
+      data: {
+        code,
+        accountId: account.id,
+        amount: account.plan.price,
+        method: 'PIX',
+        status: 'PENDING',
+        referenceMonth,
+        dueDate: dueDateFor(referenceMonth, account.billingDay),
+        proofUrl,
+      },
+    })
   }
 
   // GET /api/company/store — retorna configurações da loja

@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import api from '../../services/api.js'
-import { FiCalendar, FiShoppingBag, FiTrendingUp, FiDollarSign, FiAlertCircle, FiCheckCircle, FiClock, FiX, FiUpload, FiFile, FiImage, FiShare2 } from 'react-icons/fi'
+import { FiCalendar, FiShoppingBag, FiTrendingUp, FiDollarSign, FiAlertCircle, FiCheckCircle, FiClock, FiX, FiUpload, FiFile, FiImage, FiShare2, FiArrowLeft, FiInfo } from 'react-icons/fi'
+import { buildYearMonths, PlanMonthsGrid, MONTH_STATES, monthName, ymdToBr } from './PlanMonths.jsx'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { QRCodeSVG } from 'qrcode.react'
 import Modal from '../../components/Modal.jsx'
@@ -49,6 +50,10 @@ export default function ClientDashboard() {
   const [paymentHistory, setPaymentHistory] = useState([])
   const [historyLoading, setHistoryLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [payStep, setPayStep] = useState('months') // months | detail
+  const [yearPayments, setYearPayments] = useState([])
+  const [yearLoading, setYearLoading] = useState(false)
+  const [selectedYm, setSelectedYm] = useState(null)
   const [agentPhone, setAgentPhone] = useState(null)
   const [companyName, setCompanyName] = useState('')
 
@@ -127,9 +132,44 @@ export default function ClientDashboard() {
   const paymentStatusLabels = { PENDING: 'Pendente', PAID: 'Pago', FAILED: 'Falhou', REFUNDED: 'Reembolsado', CANCELLED: 'Cancelado' }
   const paymentStatusColors = { PENDING: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400', PAID: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400', CANCELLED: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400', FAILED: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400', REFUNDED: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' }
 
+  // Meses do ano corrente para o modal de pagamento
+  const payYear = new Date().getFullYear()
+  const months = planInfo?.plan && planInfo?.billingDay
+    ? buildYearMonths({
+        year: payYear,
+        payments: yearPayments,
+        billingDay: planInfo.billingDay,
+        planPrice: planInfo.plan.price,
+        planStartedAt: planInfo.planStartedAt,
+      })
+    : []
+  const selected = months.find((m) => m.ym === selectedYm) || null
+  const canPay = Boolean(planInfo?.plan && planInfo?.billingDay)
+
+  async function openPayModal() {
+    setPayStep('months')
+    setSelectedYm(null)
+    setShowPayModal(true)
+    setYearLoading(true)
+    try {
+      const { data } = await api.get('/company/payments')
+      setYearPayments(data)
+    } catch {
+      setYearPayments([])
+      toast.error('Não foi possível carregar as mensalidades')
+    } finally {
+      setYearLoading(false)
+    }
+  }
+
+  function selectMonth(m) {
+    setSelectedYm(m.ym)
+    setPayStep('detail')
+  }
+
   async function handleUploadProof(e) {
     const file = e.target.files?.[0]
-    if (!file || !pendingPayment?.payment) return
+    if (!file || !selected) return
 
     const allowed = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
     if (!allowed.includes(file.type)) {
@@ -143,15 +183,18 @@ export default function ClientDashboard() {
       formData.append('file', file)
       const { data: upload } = await api.post('/uploads?folder=payment-proofs', formData)
 
-      await api.put(`/company/payments/${pendingPayment.payment.id}/proof`, { proofUrl: upload.url })
+      // Mês sem cobrança gerada (pagamento antecipado): a API cria a cobrança junto com o comprovante
+      const { data: saved } = selected.payment
+        ? await api.put(`/company/payments/${selected.payment.id}/proof`, { proofUrl: upload.url })
+        : await api.put(`/company/payments/month/${selected.ym}/proof`, { proofUrl: upload.url })
 
-      setPendingPayment((prev) => ({
-        ...prev,
-        payment: { ...prev.payment, proofUrl: upload.url },
-      }))
-      toast.success('Comprovante enviado!')
-    } catch {
-      toast.error('Erro ao enviar comprovante')
+      setYearPayments((prev) => [saved, ...prev.filter((p) => p.id !== saved.id)])
+      if (pendingPayment?.payment?.id === saved.id) {
+        setPendingPayment((prev) => ({ ...prev, payment: saved }))
+      }
+      toast.success('Comprovante enviado! Vamos confirmar o pagamento.')
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Erro ao enviar comprovante')
     } finally {
       setUploading(false)
       e.target.value = ''
@@ -315,9 +358,10 @@ export default function ClientDashboard() {
                 <div className="flex flex-col items-start md:items-end gap-1">
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => setShowPayModal(true)}
-                      className={`px-8 py-3 rounded-xl text-base font-bold transition-colors shadow-sm ${pendingPayment?.payment ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-default'}`}
-                      disabled={!pendingPayment?.payment}
+                      onClick={openPayModal}
+                      className={`px-8 py-3 rounded-xl text-base font-bold transition-colors shadow-sm ${canPay ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-default'}`}
+                      disabled={!canPay}
+                      title={canPay ? 'Ver mensalidades e pagar' : 'Plano e dia de vencimento ainda não definidos'}
                     >
                       Pagar
                     </button>
@@ -426,14 +470,41 @@ export default function ClientDashboard() {
       )}
 
       {/* Modal: Pagamento */}
-      <Modal isOpen={showPayModal} onClose={() => setShowPayModal(false)} title="Pagamento" maxWidth="max-w-3xl">
-        {pendingPayment?.payment ? (
+      <Modal
+        isOpen={showPayModal}
+        onClose={() => setShowPayModal(false)}
+        title={payStep === 'detail' && selected ? `Pagamento · ${monthName(selected.ym)}` : `Mensalidades ${payYear}`}
+        maxWidth="max-w-3xl"
+      >
+        {payStep === 'months' ? (
           <div className="space-y-4">
+            <p className="text-sm text-gray-500 dark:text-gray-400">Escolha o mês que deseja pagar. Você também pode adiantar meses futuros.</p>
+            {yearLoading ? (
+              <div className="text-center py-10 text-gray-400">Carregando...</div>
+            ) : (
+              <PlanMonthsGrid months={months} onSelect={selectMonth} />
+            )}
+            <button
+              onClick={() => setShowPayModal(false)}
+              className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+            >
+              Fechar
+            </button>
+          </div>
+        ) : selected && (
+          <div className="space-y-4">
+            <button
+              onClick={() => setPayStep('months')}
+              className="flex items-center gap-1.5 text-sm font-medium text-green-700 dark:text-green-400 hover:underline"
+            >
+              <FiArrowLeft size={16} /> Voltar aos meses
+            </button>
+
             {/* Layout horizontal: QR Code à esquerda, Dados à direita */}
             <div className="flex flex-col md:flex-row gap-5">
 
               {/* Coluna esquerda: QR Code + Chave PIX */}
-              {pendingPayment.pixKey && (
+              {selected.state !== 'PAID' && pendingPayment?.pixKey && (
                 <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-4 flex flex-col items-center gap-3 md:w-[240px] shrink-0">
                   <p className="text-sm font-bold text-green-800 dark:text-green-300">Chave PIX</p>
                   <div className="bg-white p-2.5 rounded-xl">
@@ -460,48 +531,53 @@ export default function ClientDashboard() {
                 <div className="flex items-center gap-4">
                   <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4 flex-1 text-center">
                     <p className="text-xs text-gray-500 dark:text-gray-400">Valor</p>
-                    <p className="text-2xl font-extrabold text-gray-900 dark:text-white">{BRL(pendingPayment.payment.amount)}</p>
+                    <p className="text-2xl font-extrabold text-gray-900 dark:text-white">{BRL(selected.amount)}</p>
                   </div>
                   <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4 flex-1 text-center">
                     <p className="text-xs text-gray-500 dark:text-gray-400">Referência</p>
-                    <p className="text-sm font-bold text-gray-900 dark:text-white capitalize">{formatRefMonth(pendingPayment.payment.referenceMonth)}</p>
+                    <p className="text-sm font-bold text-gray-900 dark:text-white">{monthName(selected.ym)}</p>
                   </div>
                 </div>
 
                 {/* Detalhes inline */}
                 <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
-                  {pendingPayment.payment.code && (
+                  {selected.payment?.code && (
                     <div className="flex gap-1.5">
                       <span className="text-gray-500 dark:text-gray-400">Código:</span>
-                      <span className="font-bold text-gray-800 dark:text-white">{pendingPayment.payment.code}</span>
-                    </div>
-                  )}
-                  {pendingPayment.payment.dueDate && (
-                    <div className="flex gap-1.5">
-                      <span className="text-gray-500 dark:text-gray-400">Vencimento:</span>
-                      <span className="font-medium text-gray-800 dark:text-white">{new Date(pendingPayment.payment.dueDate).toLocaleDateString('pt-BR')}</span>
+                      <span className="font-bold text-gray-800 dark:text-white">{selected.payment.code}</span>
                     </div>
                   )}
                   <div className="flex gap-1.5">
+                    <span className="text-gray-500 dark:text-gray-400">Vencimento:</span>
+                    <span className="font-medium text-gray-800 dark:text-white">{ymdToBr(selected.dueYmd)}</span>
+                  </div>
+                  <div className="flex gap-1.5">
                     <span className="text-gray-500 dark:text-gray-400">Método:</span>
-                    <span className="font-medium text-gray-800 dark:text-white">{pendingPayment.payment.method || 'PIX'}</span>
+                    <span className="font-medium text-gray-800 dark:text-white">{selected.payment?.method || 'PIX'}</span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <span className="text-gray-500 dark:text-gray-400">Status:</span>
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${paymentStatusColors[pendingPayment.payment.status] || ''}`}>
-                      {paymentStatusLabels[pendingPayment.payment.status] || pendingPayment.payment.status}
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${MONTH_STATES[selected.state].badge}`}>
+                      {MONTH_STATES[selected.state].label}
                     </span>
                   </div>
-                  {pendingPayment.plan && (
+                  {planInfo?.plan && (
                     <div className="flex gap-1.5">
                       <span className="text-gray-500 dark:text-gray-400">Plano:</span>
-                      <span className="font-medium text-gray-800 dark:text-white">{pendingPayment.plan.title}</span>
+                      <span className="font-medium text-gray-800 dark:text-white">{planInfo.plan.title}</span>
                     </div>
                   )}
                 </div>
 
+                {!selected.payment && (
+                  <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 text-xs text-amber-800 dark:text-amber-300">
+                    <FiInfo size={14} className="shrink-0 mt-0.5" />
+                    <span>Pagamento antecipado: a cobrança deste mês é registrada quando você enviar o comprovante.</span>
+                  </div>
+                )}
+
                 {/* Instruções */}
-                {pendingPayment.paymentInstructions && (
+                {selected.state !== 'PAID' && pendingPayment?.paymentInstructions && (
                   <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-3">
                     <p className="text-xs font-bold text-blue-800 dark:text-blue-300 mb-1">Instruções</p>
                     <p className="text-xs text-blue-700 dark:text-blue-400 whitespace-pre-line">{pendingPayment.paymentInstructions}</p>
@@ -511,16 +587,30 @@ export default function ClientDashboard() {
                 {/* Comprovante */}
                 <div className="bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-xl p-3 space-y-2">
                   <p className="text-sm font-bold text-gray-800 dark:text-gray-200">Comprovante</p>
-                  {pendingPayment.payment.proofUrl ? (
+                  {selected.state === 'PAID' ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+                        <FiCheckCircle size={16} />
+                        <span className="font-medium">
+                          Pagamento confirmado{selected.payment?.paidAt ? ` em ${new Date(selected.payment.paidAt).toLocaleDateString('pt-BR')}` : ''}
+                        </span>
+                      </div>
+                      {selected.payment?.proofUrl && (
+                        <a href={selected.payment.proofUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400 hover:underline">
+                          <FiFile size={14} /> Ver comprovante
+                        </a>
+                      )}
+                    </div>
+                  ) : selected.payment?.proofUrl ? (
                     <div className="space-y-2">
                       <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
                         <FiCheckCircle size={14} />
-                        <span className="font-medium text-xs">Comprovante enviado</span>
+                        <span className="font-medium text-xs">Comprovante enviado. Aguardando confirmação.</span>
                       </div>
-                      {pendingPayment.payment.proofUrl.match(/\.(jpg|jpeg|png|webp|gif)(\?|$)/i) ? (
-                        <img src={pendingPayment.payment.proofUrl} alt="Comprovante" className="max-h-32 object-contain rounded-lg border dark:border-gray-600" />
+                      {selected.payment.proofUrl.match(/\.(jpg|jpeg|png|webp|gif)(\?|$)/i) ? (
+                        <img src={selected.payment.proofUrl} alt="Comprovante" className="max-h-32 object-contain rounded-lg border dark:border-gray-600" />
                       ) : (
-                        <a href={pendingPayment.payment.proofUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400 hover:underline">
+                        <a href={selected.payment.proofUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400 hover:underline">
                           <FiFile size={14} /> Visualizar comprovante (PDF)
                         </a>
                       )}
@@ -546,20 +636,6 @@ export default function ClientDashboard() {
             <button
               onClick={() => setShowPayModal(false)}
               className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-            >
-              Fechar
-            </button>
-          </div>
-        ) : (
-          <div className="text-center py-8">
-            <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto mb-4">
-              <FiCheckCircle size={32} className="text-green-500" />
-            </div>
-            <p className="text-lg font-semibold text-gray-800 dark:text-white mb-1">Tudo em dia!</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Nenhuma cobrança pendente neste mês.</p>
-            <button
-              onClick={() => setShowPayModal(false)}
-              className="mt-6 px-6 py-2.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
             >
               Fechar
             </button>

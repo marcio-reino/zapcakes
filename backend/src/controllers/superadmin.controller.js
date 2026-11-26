@@ -8,6 +8,7 @@ import evolutionApi from '../config/evolution.js'
 import { sendMail } from '../services/mail.service.js'
 import openAiService from '../services/openai-instance.js'
 import { UploadService } from '../services/upload.service.js'
+import { generateUniquePaymentCode } from '../services/billing.service.js'
 import redisClient, { isRedisReady } from '../config/redis.js'
 
 const SIM_INSPIRATION_KEY = (jid) => `zapcakes:inspiration:${jid}`
@@ -142,17 +143,6 @@ async function expandSimulatorMarkers(text, userId) {
   }
 
   return out
-}
-
-const CODE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-async function generateUniquePaymentCode() {
-  for (let i = 0; i < 50; i++) {
-    let code = ''
-    for (let j = 0; j < 4; j++) code += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]
-    const exists = await prisma.payment.findUnique({ where: { code } })
-    if (!exists) return code
-  }
-  throw new Error('Não foi possível gerar código único')
 }
 
 export class SuperadminController {
