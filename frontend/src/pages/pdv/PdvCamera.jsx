@@ -350,7 +350,7 @@ export function CameraOverlay({ onClose, onDetect }) {
         )}
         <button
           onClick={onClose}
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 text-sm font-semibold border border-gray-300 dark:border-gray-600 shadow-lg hover:bg-gray-50 dark:hover:bg-gray-700"
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-semibold shadow-lg"
         >
           <FiX size={16} /> Fechar
         </button>
